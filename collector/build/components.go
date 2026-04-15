@@ -11,9 +11,11 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/receiver"
 	otelconftelemetry "go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
+	debugexporter "go.opentelemetry.io/collector/exporter/debugexporter"
 	prometheusremotewriteexporter "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter"
 	healthcheckextension "github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension"
 	knxreceiver "github.com/maxarndt/knxreceiver/receiver/knxreceiver"
+	syrreceiver "github.com/maxarndt/knxreceiver/receiver/syrreceiver"
 )
 
 type aliasProvider interface{ DeprecatedAlias() component.Type }
@@ -48,21 +50,25 @@ func components() (otelcol.Factories, error) {
 
 	factories.Receivers, err = otelcol.MakeFactoryMap[receiver.Factory](
 		knxreceiver.NewFactory(),
+		syrreceiver.NewFactory(),
 	)
 	if err != nil {
 		return otelcol.Factories{}, err
 	}
 	factories.ReceiverModules = makeModulesMap(factories.Receivers, map[component.Type]string{
 		knxreceiver.NewFactory().Type(): "github.com/maxarndt/knxreceiver/receiver/knxreceiver v0.0.1",
+		syrreceiver.NewFactory().Type(): "github.com/maxarndt/knxreceiver/receiver/syrreceiver v0.0.1",
 	})
 
 	factories.Exporters, err = otelcol.MakeFactoryMap[exporter.Factory](
+		debugexporter.NewFactory(),
 		prometheusremotewriteexporter.NewFactory(),
 	)
 	if err != nil {
 		return otelcol.Factories{}, err
 	}
 	factories.ExporterModules = makeModulesMap(factories.Exporters, map[component.Type]string{
+		debugexporter.NewFactory().Type(): "go.opentelemetry.io/collector/exporter/debugexporter v0.149.0",
 		prometheusremotewriteexporter.NewFactory().Type(): "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.149.0",
 	})
 

@@ -6,6 +6,7 @@ go 1.25.0
 
 require (
 	github.com/maxarndt/knxreceiver/receiver/knxreceiver v0.0.1
+	github.com/maxarndt/knxreceiver/receiver/syrreceiver v0.0.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.149.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.149.0
 	go.opentelemetry.io/collector/component v1.55.0
@@ -17,6 +18,7 @@ require (
 	go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.55.0
 	go.opentelemetry.io/collector/connector v0.149.0
 	go.opentelemetry.io/collector/exporter v1.55.0
+	go.opentelemetry.io/collector/exporter/debugexporter v0.149.0
 	go.opentelemetry.io/collector/extension v1.55.0
 	go.opentelemetry.io/collector/otelcol v0.149.0
 	go.opentelemetry.io/collector/processor v1.55.0
@@ -142,9 +144,11 @@ require (
 	go.opentelemetry.io/collector/connector/xconnector v0.149.0 // indirect
 	go.opentelemetry.io/collector/consumer v1.55.0 // indirect
 	go.opentelemetry.io/collector/consumer/consumererror v0.149.0 // indirect
+	go.opentelemetry.io/collector/consumer/consumererror/xconsumererror v0.149.0 // indirect
 	go.opentelemetry.io/collector/consumer/consumertest v0.149.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.149.0 // indirect
 	go.opentelemetry.io/collector/exporter/exporterhelper v0.149.0 // indirect
+	go.opentelemetry.io/collector/exporter/exporterhelper/xexporterhelper v0.149.0 // indirect
 	go.opentelemetry.io/collector/exporter/exportertest v0.149.0 // indirect
 	go.opentelemetry.io/collector/exporter/xexporter v0.149.0 // indirect
 	go.opentelemetry.io/collector/extension/extensionauth v1.55.0 // indirect
@@ -216,3 +220,5 @@ require (
 )
 
 replace github.com/maxarndt/knxreceiver/receiver/knxreceiver v0.0.1 => /Users/maxarndt/git/knxreceiver/receiver/knxreceiver
+
+replace github.com/maxarndt/knxreceiver/receiver/syrreceiver v0.0.1 => /Users/maxarndt/git/knxreceiver/receiver/syrreceiver

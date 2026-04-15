@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: knx-collector-config
+  name: custom-collector-config
   namespace: monitoring
 data:
   collector-config.yaml: |
@@ -35,6 +35,30 @@ data:
               room: "kueche"
               floor: "eg"
 
+      syr:
+        endpoint: "http://192.168.1.100:5333"
+        collection_interval: 2m
+        timeout: 10s
+        metrics:
+          FLO:
+            enabled: false
+          IWH:
+            enabled: false
+          OWH:
+            enabled: false
+          VOL:
+            enabled: true
+          RE1:
+            enabled: true
+          SS1:
+            enabled: true
+          SV1:
+            enabled: true
+          ALA:
+            enabled: true
+          RG1:
+            enabled: true
+
     exporters:
       prometheusremotewrite:
         endpoint: "http://victoriametrics.monitoring.svc.cluster.local:8428/api/v1/write"
@@ -45,5 +69,5 @@ data:
       extensions: [health_check]
       pipelines:
         metrics:
-          receivers: [knx]
+          receivers: [knx, syr]
           exporters: [prometheusremotewrite]

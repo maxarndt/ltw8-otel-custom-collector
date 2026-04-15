@@ -32,6 +32,30 @@ receivers:
           room: "kueche"
           floor: "eg"
 
+  syr:
+    endpoint: "http://10.8.10.170:5333"
+    collection_interval: 2m
+    timeout: 10s
+    metrics:
+      FLO:
+        enabled: false
+      IWH:
+        enabled: false
+      OWH:
+        enabled: false
+      VOL:
+        enabled: true
+      RE1:
+        enabled: true
+      SS1:
+        enabled: true
+      SV1:
+        enabled: true
+      ALA:
+        enabled: true
+      RG1:
+        enabled: true
+
 exporters:
   prometheusremotewrite:
     endpoint: "http://victoriametrics:8428/api/v1/write"
@@ -42,5 +66,5 @@ service:
   extensions: [health_check]
   pipelines:
     metrics:
-      receivers: [knx]
+      receivers: [knx, syr]
       exporters: [prometheusremotewrite]

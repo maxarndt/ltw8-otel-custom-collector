@@ -10,15 +10,17 @@ RUN GOBIN=/usr/local/bin go install go.opentelemetry.io/collector/cmd/builder@v0
 COPY receiver/ receiver/
 COPY collector/builder-config.yaml collector/builder-config.yaml
 
-# Build the collector
-RUN cd collector && builder --config builder-config.yaml --skip-compilation=false
+# Build the collector.
+# GOWORK=off: das OCB-Build-Verzeichnis ist kein go.work-Modul — ohne dieses
+# Flag schlägt 'go build' fehl wenn go.work im Parent-Verzeichnis vorhanden ist.
+RUN cd collector && GOWORK=off builder --config builder-config.yaml --skip-compilation=false
 
 # Stage 2: Minimal runtime image
 FROM gcr.io/distroless/static-debian12:nonroot
 
-COPY --from=builder /build/collector/build/knx-collector /knx-collector
+COPY --from=builder /build/collector/build/custom-collector /custom-collector
 
 EXPOSE 13133
 
-ENTRYPOINT ["/knx-collector"]
+ENTRYPOINT ["/custom-collector"]
 CMD ["--config", "/etc/otelcol/collector-config.yaml"]

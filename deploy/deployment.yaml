@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: knx-collector
+  name: custom-collector
   namespace: monitoring
   labels:
-    app: knx-collector
+    app: custom-collector
 spec:
   # 1 replica only — KNX Tunnel allows one connection at a time.
   # Router mode supports multiple listeners, but single replica avoids duplicate metrics.
   replicas: 1
   selector:
     matchLabels:
-      app: knx-collector
+      app: custom-collector
   template:
     metadata:
       labels:
-        app: knx-collector
+        app: custom-collector
     spec:
       containers:
-        - name: knx-collector
-          image: knx-collector:latest
+        - name: custom-collector
+          image: custom-collector:latest
           imagePullPolicy: IfNotPresent
           args:
             - --config=/etc/otelcol/collector-config.yaml
@@ -55,7 +55,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: knx-collector-config
+            name: custom-collector-config
       # NOTE: For KNX router (multicast) mode the pod needs to receive multicast traffic
       # from the MDT IP Router. Options:
       #   1. hostNetwork: true  — pod joins the host network, receives multicast directly

@@ -1,0 +1,40 @@
+syr:
+  # IP-Adresse und Port des SYR NeoSoft 2500 (ESP32, Port 5333 fest)
+  endpoint: "http://192.168.1.100:5333"
+
+  # Wie oft Metriken abgefragt werden (ESP32 hat wenig Leistung — nicht zu kurz!)
+  collection_interval: 2m
+
+  # HTTP-Timeout pro Einzelabfrage
+  timeout: 10s
+
+  # Metriken einzeln aktivieren/deaktivieren.
+  # Alle sind standardmäßig aktiviert — hier nur deaktivieren was nicht gebraucht wird.
+  metrics:
+    # FLO: Aktueller Durchfluss (l/h) — Gauge
+    FLO:
+      enabled: true
+    # VOL: Gesamtvolumen kumuliert (l) — Sum (monoton, kumulativ)
+    VOL:
+      enabled: true
+    # RE1: Restkapazität bis Regenerierung (l) — Gauge
+    RE1:
+      enabled: true
+    # IWH: Eingangswasserhärte (°dH) — Gauge
+    IWH:
+      enabled: true
+    # OWH: Ausgangswasserhärte nach Enthärtung (°dH) — Gauge
+    OWH:
+      enabled: true
+    # SS1: Salzvorrat in Wochen (geschätzt) — Gauge
+    SS1:
+      enabled: true
+    # SV1: Salzvorrat in kg — Gauge
+    SV1:
+      enabled: true
+    # ALA: Alarmstatus (0 = kein Alarm) — Gauge
+    ALA:
+      enabled: true
+    # RG1: Regenerierungsstatus — Gauge
+    RG1:
+      enabled: true
