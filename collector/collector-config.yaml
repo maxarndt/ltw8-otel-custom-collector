@@ -1,0 +1,46 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  knx:
+    connection:
+      # Router-Modus (Default — kein Verbindungsslot am MDT IP Router belegt)
+      type: "router"
+      multicast_address: "224.0.23.12:3671"
+      # Tunnel-Modus (Alternative, falls kein Multicast verfügbar):
+      # type: "tunnel"
+      # endpoint: "192.168.1.10:3671"
+    read_startup_interval: 200ms
+    address_configs:
+      "1/1/1":
+        name: "strom_eg_kueche_wh"
+        dpt: "13.010"
+        export: true
+        metric_type: "sum"
+        read_startup: true
+        labels:
+          room: "kueche"
+          floor: "eg"
+      "1/1/2":
+        name: "leistung_eg_kueche_w"
+        dpt: "14.056"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "kueche"
+          floor: "eg"
+
+exporters:
+  prometheusremotewrite:
+    endpoint: "http://victoriametrics:8428/api/v1/write"
+    tls:
+      insecure: true
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [knx]
+      exporters: [prometheusremotewrite]

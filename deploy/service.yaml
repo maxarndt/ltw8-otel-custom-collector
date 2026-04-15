@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: knx-collector
+  namespace: monitoring
+  labels:
+    app: knx-collector
+spec:
+  type: ClusterIP
+  selector:
+    app: knx-collector
+  ports:
+    - name: health
+      port: 13133
+      targetPort: health
+      protocol: TCP
