@@ -236,14 +236,56 @@ type DeviceEntry struct {
 	Serial string  `json:"Serial"`
 }
 
+// ======================== Ohmpilot Realtime Data ========================
+
+// OhmpilotRealtimeData ist die Response-Struktur für GetOhmpilotRealtimeData.cgi.
+// Map per DeviceId.
+type OhmpilotRealtimeData map[string]OhmpilotDevice
+
+// OhmpilotDevice enthält die Daten eines einzelnen Ohmpilots.
+type OhmpilotDevice struct {
+	Details                               OhmpilotDetails `json:"Details"`
+	CodeOfState                           float64         `json:"CodeOfState"`
+	EnergyReal_WAC_Sum_Consumed           float64         `json:"EnergyReal_WAC_Sum_Consumed"`           // Wh
+	PowerReal_PAC_Sum                     float64         `json:"PowerReal_PAC_Sum"`                     // W
+	Temperature_Channel_1                 float64         `json:"Temperature_Channel_1"`                 // °C
+	EnergyReactive_VArAC_Phase_1_Produced float64         `json:"EnergyReactive_VArAC_Phase_1_Produced"` // varh
+}
+
+// OhmpilotDetails enthält Metadaten des Ohmpilot.
+type OhmpilotDetails struct {
+	Manufacturer string `json:"Manufacturer"`
+	Model        string `json:"Model"`
+	Serial       string `json:"Serial"`
+	Hardware     string `json:"Hardware,omitempty"`
+	Software     string `json:"Software,omitempty"`
+}
+
+// ======================== Inverter Realtime per Device ========================
+
+// InverterRealtimeMap mappt Inverter-IDs auf ihre Realtime-Daten.
+// Wird gebraucht, da pro Inverter ein eigener API-Call mit DeviceId nötig ist.
+type InverterRealtimeMap map[string]*InverterRealtimeData
+
+// ======================== ScrapeStats ========================
+
+// ScrapeStats enthält Telemetry-Daten über den Scrape-Zyklus selbst.
+type ScrapeStats struct {
+	DurationSeconds float64 // Gesamt-Dauer des Scrape-Zyklus
+	Errors          int64   // Anzahl Fehler in diesem Zyklus
+	Success         bool    // true falls mindestens ein Endpoint erfolgreich
+}
+
 // ======================== ScrapedMetrics ========================
 
 // ScrapedMetrics fasst alle gescrapten Daten von einem Scrape-Zyklus zusammen.
 type ScrapedMetrics struct {
 	Timestamp time.Time
 	PowerFlow *PowerFlowRealtimeData
-	Inverter  *InverterRealtimeData
+	Inverters InverterRealtimeMap // pro Device-ID
 	Meter     MeterRealtimeData
 	Storage   StorageRealtimeData
+	Ohmpilot  OhmpilotRealtimeData
 	Info      InverterInfoData
+	Stats     ScrapeStats
 }

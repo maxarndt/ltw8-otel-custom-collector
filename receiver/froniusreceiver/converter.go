@@ -9,8 +9,19 @@ import (
 )
 
 // Converter konvertiert Fronius API Daten zu OTEL pmetric.Metrics.
+//
+// Designprinzipien:
+//   - Pro logischer Komponente (Site, Inverter, Meter, Storage, Ohmpilot) wird ein
+//     eigenes ResourceMetrics erzeugt mit jeweiligen Resource-Attributen
+//     (z.B. Serial, Model). Das ist OTEL-idiomatisch und ermöglicht saubere
+//     Filterung in Backends.
+//   - UCUM Units werden konsequent gesetzt (W, V, A, Hz, Wh, Cel, %, 1, var, VA).
+//   - Metric-Namen tragen KEINE Unit-Suffixe (Unit ist eigenständiges Feld).
+//   - Inverter-Energien kommen ausschließlich aus InverterRealtime (nicht doppelt
+//     emittiert via PowerFlow-Inverter-Loop).
 type Converter struct {
-	logger *zap.Logger
+	logger   *zap.Logger
+	endpoint string // für Resource-Attribut fronius.endpoint
 }
 
 // NewConverter erstellt einen neuen Converter.
@@ -18,436 +29,453 @@ func NewConverter(logger *zap.Logger) *Converter {
 	return &Converter{logger: logger}
 }
 
+// NewConverterWithEndpoint erstellt einen Converter mit Endpoint-Resource-Attribut.
+func NewConverterWithEndpoint(logger *zap.Logger, endpoint string) *Converter {
+	return &Converter{logger: logger, endpoint: endpoint}
+}
+
 // ConvertToMetrics konvertiert ScrapedMetrics zu pmetric.Metrics.
-func (c *Converter) ConvertToMetrics(ctx context.Context, scraped *ScrapedMetrics) pmetric.Metrics {
+func (c *Converter) ConvertToMetrics(_ context.Context, scraped *ScrapedMetrics) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
-	rm := metrics.ResourceMetrics().AppendEmpty()
-
-	scopeMetrics := rm.ScopeMetrics().AppendEmpty()
-
 	now := pcommon.NewTimestampFromTime(scraped.Timestamp)
 
-	// Conversion für jeden Datentyp
+	// Site-Level (PowerFlow Site-Daten)
 	if scraped.PowerFlow != nil {
-		c.convertPowerFlow(scopeMetrics.Metrics(), scraped.PowerFlow, now)
+		c.convertSite(metrics, &scraped.PowerFlow.Site, now)
+		// Pro-Inverter Übersichtsmetriken aus PowerFlow (P, SOC) — Energien NICHT
+		// hier, die kommen aus InverterRealtime. AC-Power nur falls kein
+		// InverterRealtime existiert (sonst Duplikat zu convertInverter).
+		hasRealtime := make(map[string]bool, len(scraped.Inverters))
+		for id, inv := range scraped.Inverters {
+			if inv != nil {
+				hasRealtime[id] = true
+			}
+		}
+		c.convertPowerFlowInverters(metrics, scraped.PowerFlow.Inverters, scraped.Info, hasRealtime, now)
 	}
-	if scraped.Inverter != nil {
-		c.convertInverter(scopeMetrics.Metrics(), scraped.Inverter, now)
+
+	// Pro Inverter ein eigenes ResourceMetrics für Realtime-Daten
+	for id, inv := range scraped.Inverters {
+		if inv == nil {
+			continue
+		}
+		c.convertInverter(metrics, id, inv, scraped.Info, now)
 	}
-	if scraped.Meter != nil && len(scraped.Meter) > 0 {
-		c.convertMeter(scopeMetrics.Metrics(), scraped.Meter, now)
+
+	// Meter
+	if len(scraped.Meter) > 0 {
+		c.convertMeter(metrics, scraped.Meter, now)
 	}
-	if scraped.Storage != nil && len(scraped.Storage) > 0 {
-		c.convertStorage(scopeMetrics.Metrics(), scraped.Storage, now)
+
+	// Storage
+	if len(scraped.Storage) > 0 {
+		c.convertStorage(metrics, scraped.Storage, now)
 	}
+
+	// Ohmpilot
+	if len(scraped.Ohmpilot) > 0 {
+		c.convertOhmpilot(metrics, scraped.Ohmpilot, now)
+	}
+
+	// Scrape Telemetry
+	c.convertScrapeTelemetry(metrics, &scraped.Stats, now)
 
 	return metrics
 }
 
-// ======================== PowerFlow Conversion ========================
+// ======================== Resource Builders ========================
 
-func (c *Converter) convertPowerFlow(metrics pmetric.MetricSlice, pf *PowerFlowRealtimeData, now pcommon.Timestamp) {
-	if pf == nil {
-		return
+func (c *Converter) newResource(metrics pmetric.Metrics, attrs map[string]string) pmetric.MetricSlice {
+	rm := metrics.ResourceMetrics().AppendEmpty()
+	if c.endpoint != "" {
+		rm.Resource().Attributes().PutStr("fronius.endpoint", c.endpoint)
 	}
+	for k, v := range attrs {
+		if v == "" {
+			continue
+		}
+		rm.Resource().Attributes().PutStr(k, v)
+	}
+	sm := rm.ScopeMetrics().AppendEmpty()
+	sm.Scope().SetName("github.com/maxarndt/knxreceiver/receiver/froniusreceiver")
+	return sm.Metrics()
+}
 
-	site := pf.Site
+// ======================== Site Conversion ========================
 
-	// fronius_site_pv_power_watts (Gauge)
-	c.addGaugeMetric(metrics, "fronius_site_pv_power_watts", "PV power in watts",
-		site.P_PV, nil, now)
+func (c *Converter) convertSite(metrics pmetric.Metrics, site *PowerFlowSite, now pcommon.Timestamp) {
+	ms := c.newResource(metrics, map[string]string{
+		"fronius.component": "site",
+	})
 
-	// fronius_site_grid_power_watts (Gauge) — negative = import
-	c.addGaugeMetric(metrics, "fronius_site_grid_power_watts", "Grid power in watts (negative=import)",
-		site.P_Grid, nil, now)
+	c.addGauge(ms, "fronius_site_pv_power", "PV power", "W", site.P_PV, nil, now)
+	c.addGauge(ms, "fronius_site_grid_power", "Grid power (negative=import)", "W", site.P_Grid, nil, now)
+	c.addGauge(ms, "fronius_site_load_power", "Load power", "W", site.P_Load, nil, now)
+	c.addGauge(ms, "fronius_site_battery_power", "Battery power (negative=charging)", "W", site.P_Akku, nil, now)
+	c.addSum(ms, "fronius_site_energy_total", "Total energy produced", "Wh", site.E_Total, nil, now, true)
+	c.addSum(ms, "fronius_site_energy_year", "Energy produced this year", "Wh", site.E_Year, nil, now, true)
+	c.addSum(ms, "fronius_site_energy_day", "Energy produced today", "Wh", site.E_Day, nil, now, true)
+	c.addGauge(ms, "fronius_site_autonomy_ratio", "Autonomy ratio (0-100)", "%", site.Rel_Autonomy, nil, now)
+	c.addGauge(ms, "fronius_site_selfconsumption_ratio", "Self-consumption ratio (0-100)", "%", site.Rel_SelfConsumption, nil, now)
+}
 
-	// fronius_site_load_power_watts (Gauge)
-	c.addGaugeMetric(metrics, "fronius_site_load_power_watts", "Load power in watts",
-		site.P_Load, nil, now)
+// ======================== PowerFlow per-Inverter (Übersicht) ========================
 
-	// fronius_site_battery_power_watts (Gauge)
-	c.addGaugeMetric(metrics, "fronius_site_battery_power_watts", "Battery power in watts (negative=charging)",
-		site.P_Akku, nil, now)
+// convertPowerFlowInverters emittiert pro Inverter NUR die Werte, die
+// einzigartig aus PowerFlow stammen (SOC). AC Power und Energien kommen aus
+// InverterRealtime — wären hier Duplikate mit identischen Resource-Attributen.
+//
+// Sonderfall: Falls InverterRealtime deaktiviert ist (kein convertInverter-Call
+// für diesen Inverter), wird zusätzlich AC Power aus PowerFlow geliefert,
+// damit zumindest die wichtigste Kennzahl da ist.
+func (c *Converter) convertPowerFlowInverters(
+	metrics pmetric.Metrics,
+	inverters map[string]PowerFlowInverter,
+	info InverterInfoData,
+	hasRealtime map[string]bool,
+	now pcommon.Timestamp,
+) {
+	for invID, inv := range inverters {
+		ms := c.newResource(metrics, c.inverterResourceAttrs(invID, info))
 
-	// fronius_site_energy_total_wh (Sum, monotonic)
-	c.addSumMetric(metrics, "fronius_site_energy_total_wh", "Total energy produced in watt-hours",
-		site.E_Total, nil, now, true)
+		// SOC immer (nur in PowerFlow verfügbar)
+		c.addGauge(ms, "fronius_inverter_soc", "State of charge", "%", inv.SOC, nil, now)
 
-	// fronius_site_energy_year_wh (Sum, daily reset)
-	c.addSumMetric(metrics, "fronius_site_energy_year_wh", "Energy produced this year in watt-hours",
-		site.E_Year, nil, now, true)
-
-	// fronius_site_energy_day_wh (Sum, daily reset)
-	c.addSumMetric(metrics, "fronius_site_energy_day_wh", "Energy produced today in watt-hours",
-		site.E_Day, nil, now, true)
-
-	// fronius_site_autonomy_ratio (Gauge)
-	c.addGaugeMetric(metrics, "fronius_site_autonomy_ratio", "Autonomy ratio (0-100)",
-		site.Rel_Autonomy, nil, now)
-
-	// fronius_site_selfconsumption_ratio (Gauge)
-	c.addGaugeMetric(metrics, "fronius_site_selfconsumption_ratio", "Self-consumption ratio (0-100)",
-		site.Rel_SelfConsumption, nil, now)
-
-	// Inverter-level metrics aus PowerFlow (pro Inverter)
-	for invID, inv := range pf.Inverters {
-		labels := map[string]string{"inverter_id": invID}
-
-		// fronius_inverter_ac_power_watts (Gauge)
-		c.addGaugeMetric(metrics, "fronius_inverter_ac_power_watts", "Inverter AC power in watts",
-			inv.P, labels, now)
-
-		// fronius_inverter_soc_percent (Gauge) — aus PowerFlow
-		if inv.SOC > 0 {
-			c.addGaugeMetric(metrics, "fronius_inverter_soc_percent", "State of charge in percent",
-				inv.SOC, labels, now)
+		// AC Power nur falls InverterRealtime fehlt (sonst Duplikat)
+		if !hasRealtime[invID] {
+			c.addGauge(ms, "fronius_inverter_ac_power", "Inverter AC power", "W", inv.P, nil, now)
 		}
 
-		// fronius_inverter_energy_total_wh (Sum, monotonic)
-		c.addSumMetric(metrics, "fronius_inverter_energy_total_wh", "Inverter total energy in watt-hours",
-			inv.E_Total, labels, now, true)
-
-		// fronius_inverter_energy_year_wh (Sum)
-		c.addSumMetric(metrics, "fronius_inverter_energy_year_wh", "Inverter energy this year in watt-hours",
-			inv.E_Year, labels, now, true)
-
-		// fronius_inverter_energy_day_wh (Sum)
-		c.addSumMetric(metrics, "fronius_inverter_energy_day_wh", "Inverter energy today in watt-hours",
-			inv.E_Day, labels, now, true)
+		// HINWEIS: Energien (E_Day/Year/Total) kommen aus convertInverter
+		// (InverterRealtime). Falls dieser Inverter dort fehlt, gehen die
+		// Energien verloren — das ist ein bewusster Tradeoff zur
+		// Duplikat-Vermeidung. Lösung: InverterRealtime aktivieren.
 	}
 }
 
 // ======================== Inverter Realtime Conversion ========================
 
-func (c *Converter) convertInverter(metrics pmetric.MetricSlice, inv *InverterRealtimeData, now pcommon.Timestamp) {
-	if inv == nil {
-		return
-	}
+func (c *Converter) convertInverter(
+	metrics pmetric.Metrics,
+	invID string,
+	inv *InverterRealtimeData,
+	info InverterInfoData,
+	now pcommon.Timestamp,
+) {
+	ms := c.newResource(metrics, c.inverterResourceAttrs(invID, info))
 
-	labels := map[string]string{"inverter_id": "1"} // Default Device ID 1
-
-	// AC Power
+	// AC
 	if inv.PAC != nil {
-		c.addGaugeMetric(metrics, "fronius_inverter_ac_power_watts", "Inverter AC power in watts",
-			inv.PAC.Value, labels, now)
+		c.addGauge(ms, "fronius_inverter_ac_power", "Inverter AC power", "W", inv.PAC.Value, nil, now)
 	}
-
-	// AC Voltage
+	if inv.SAC != nil {
+		c.addGauge(ms, "fronius_inverter_ac_apparent_power", "Inverter AC apparent power", "VA", inv.SAC.Value, nil, now)
+	}
 	if inv.UAC != nil {
-		c.addGaugeMetric(metrics, "fronius_inverter_ac_voltage_volts", "Inverter AC voltage in volts",
-			inv.UAC.Value, labels, now)
+		c.addGauge(ms, "fronius_inverter_ac_voltage", "Inverter AC voltage", "V", inv.UAC.Value, nil, now)
 	}
-
-	// AC Current
 	if inv.IAC != nil {
-		c.addGaugeMetric(metrics, "fronius_inverter_ac_current_amps", "Inverter AC current in amps",
-			inv.IAC.Value, labels, now)
+		c.addGauge(ms, "fronius_inverter_ac_current", "Inverter AC current", "A", inv.IAC.Value, nil, now)
 	}
-
-	// AC Frequency
 	if inv.FAC != nil {
-		c.addGaugeMetric(metrics, "fronius_inverter_ac_frequency_hz", "Inverter AC frequency in Hz",
-			inv.FAC.Value, labels, now)
+		c.addGauge(ms, "fronius_inverter_ac_frequency", "Inverter AC frequency", "Hz", inv.FAC.Value, nil, now)
 	}
 
-	// DC Voltages (pro MPPT)
-	if inv.UDC != nil {
-		mpptLabels := map[string]string{"inverter_id": "1", "mppt": "1"}
-		c.addGaugeMetric(metrics, "fronius_inverter_dc_voltage_volts", "Inverter DC voltage MPPT 1 in volts",
-			inv.UDC.Value, mpptLabels, now)
-	}
-	if inv.UDC_2 != nil {
-		mpptLabels := map[string]string{"inverter_id": "1", "mppt": "2"}
-		c.addGaugeMetric(metrics, "fronius_inverter_dc_voltage_volts", "Inverter DC voltage MPPT 2 in volts",
-			inv.UDC_2.Value, mpptLabels, now)
-	}
-	if inv.UDC_3 != nil {
-		mpptLabels := map[string]string{"inverter_id": "1", "mppt": "3"}
-		c.addGaugeMetric(metrics, "fronius_inverter_dc_voltage_volts", "Inverter DC voltage MPPT 3 in volts",
-			inv.UDC_3.Value, mpptLabels, now)
-	}
-
-	// DC Currents (pro MPPT)
-	if inv.IDC != nil {
-		mpptLabels := map[string]string{"inverter_id": "1", "mppt": "1"}
-		c.addGaugeMetric(metrics, "fronius_inverter_dc_current_amps", "Inverter DC current MPPT 1 in amps",
-			inv.IDC.Value, mpptLabels, now)
-	}
-	if inv.IDC_2 != nil {
-		mpptLabels := map[string]string{"inverter_id": "1", "mppt": "2"}
-		c.addGaugeMetric(metrics, "fronius_inverter_dc_current_amps", "Inverter DC current MPPT 2 in amps",
-			inv.IDC_2.Value, mpptLabels, now)
-	}
-	if inv.IDC_3 != nil {
-		mpptLabels := map[string]string{"inverter_id": "1", "mppt": "3"}
-		c.addGaugeMetric(metrics, "fronius_inverter_dc_current_amps", "Inverter DC current MPPT 3 in amps",
-			inv.IDC_3.Value, mpptLabels, now)
-	}
-
-	// Energies
-	if inv.TOTAL_ENERGY != nil {
-		c.addSumMetric(metrics, "fronius_inverter_energy_total_wh", "Inverter total energy in watt-hours",
-			inv.TOTAL_ENERGY.Value, labels, now, true)
-	}
-	if inv.YEAR_ENERGY != nil {
-		c.addSumMetric(metrics, "fronius_inverter_energy_year_wh", "Inverter energy this year in watt-hours",
-			inv.YEAR_ENERGY.Value, labels, now, true)
-	}
-	if inv.DAY_ENERGY != nil {
-		c.addSumMetric(metrics, "fronius_inverter_energy_day_wh", "Inverter energy today in watt-hours",
-			inv.DAY_ENERGY.Value, labels, now, true)
-	}
-
-	// Status Code
-	if inv.DeviceStatus != nil {
-		c.addGaugeMetric(metrics, "fronius_inverter_status_code", "Inverter status code",
-			float64(inv.DeviceStatus.StatusCode), labels, now)
-		if inv.DeviceStatus.ErrorCode > 0 {
-			c.addGaugeMetric(metrics, "fronius_inverter_error_code", "Inverter error code",
-				float64(inv.DeviceStatus.ErrorCode), labels, now)
+	// 3-phasige Werte (falls 3PInverterData ergänzend geliefert wird)
+	for phase, dp := range map[string]*DataPoint{"L1": inv.IAC_L1, "L2": inv.IAC_L2, "L3": inv.IAC_L3} {
+		if dp != nil {
+			c.addGauge(ms, "fronius_inverter_ac_current_phase", "Inverter AC current per phase", "A",
+				dp.Value, map[string]string{"phase": phase}, now)
 		}
 	}
+	for phase, dp := range map[string]*DataPoint{"L1": inv.UAC_L1, "L2": inv.UAC_L2, "L3": inv.UAC_L3} {
+		if dp != nil {
+			c.addGauge(ms, "fronius_inverter_ac_voltage_phase", "Inverter AC voltage per phase", "V",
+				dp.Value, map[string]string{"phase": phase}, now)
+		}
+	}
+	if inv.T_AMBIENT != nil {
+		c.addGauge(ms, "fronius_inverter_temperature_ambient", "Inverter ambient temperature", "Cel",
+			inv.T_AMBIENT.Value, nil, now)
+	}
+
+	// DC pro MPPT
+	for mppt, dp := range map[string]*DataPoint{"1": inv.UDC, "2": inv.UDC_2, "3": inv.UDC_3} {
+		if dp != nil {
+			c.addGauge(ms, "fronius_inverter_dc_voltage", "Inverter DC voltage", "V",
+				dp.Value, map[string]string{"mppt": mppt}, now)
+		}
+	}
+	for mppt, dp := range map[string]*DataPoint{"1": inv.IDC, "2": inv.IDC_2, "3": inv.IDC_3} {
+		if dp != nil {
+			c.addGauge(ms, "fronius_inverter_dc_current", "Inverter DC current", "A",
+				dp.Value, map[string]string{"mppt": mppt}, now)
+		}
+	}
+
+	// Energien (alleinige Quelle — nicht via PowerFlow doppelt)
+	if inv.TOTAL_ENERGY != nil {
+		c.addSum(ms, "fronius_inverter_energy_total", "Inverter total energy", "Wh",
+			inv.TOTAL_ENERGY.Value, nil, now, true)
+	}
+	if inv.YEAR_ENERGY != nil {
+		c.addSum(ms, "fronius_inverter_energy_year", "Inverter energy this year", "Wh",
+			inv.YEAR_ENERGY.Value, nil, now, true)
+	}
+	if inv.DAY_ENERGY != nil {
+		c.addSum(ms, "fronius_inverter_energy_day", "Inverter energy today", "Wh",
+			inv.DAY_ENERGY.Value, nil, now, true)
+	}
+
+	// Status (immer emittieren)
+	if inv.DeviceStatus != nil {
+		c.addGauge(ms, "fronius_inverter_status_code", "Inverter status code", "1",
+			float64(inv.DeviceStatus.StatusCode), nil, now)
+		c.addGauge(ms, "fronius_inverter_error_code", "Inverter error code", "1",
+			float64(inv.DeviceStatus.ErrorCode), nil, now)
+	}
+}
+
+// inverterResourceAttrs baut die Resource-Attribute für einen Inverter.
+func (c *Converter) inverterResourceAttrs(invID string, info InverterInfoData) map[string]string {
+	attrs := map[string]string{
+		"fronius.component":   "inverter",
+		"fronius.inverter.id": invID,
+	}
+	if info != nil {
+		if i, ok := info[invID]; ok {
+			attrs["fronius.inverter.serial"] = i.UniqueID
+			attrs["fronius.inverter.custom_name"] = i.CustomName
+		}
+	}
+	return attrs
 }
 
 // ======================== Meter Conversion ========================
 
-func (c *Converter) convertMeter(metrics pmetric.MetricSlice, meterData MeterRealtimeData, now pcommon.Timestamp) {
+func (c *Converter) convertMeter(metrics pmetric.Metrics, meterData MeterRealtimeData, now pcommon.Timestamp) {
 	for deviceID, meter := range meterData {
+		attrs := map[string]string{
+			"fronius.component": "meter",
+			"fronius.meter.id":  deviceID,
+		}
+		if meter.Details != nil {
+			attrs["fronius.meter.serial"] = meter.Details.Serial
+			attrs["fronius.meter.model"] = meter.Details.Model
+			attrs["fronius.meter.manufacturer"] = meter.Details.Manufacturer
+		}
+		ms := c.newResource(metrics, attrs)
+
 		// Phase 1
-		if meter.Current_AC_Phase_1 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L1"}
-			c.addGaugeMetric(metrics, "fronius_meter_current_amps", "Meter current phase 1 in amps",
-				*meter.Current_AC_Phase_1, labels, now)
-		}
-		if meter.Voltage_AC_Phase_1 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L1"}
-			c.addGaugeMetric(metrics, "fronius_meter_voltage_volts", "Meter voltage phase 1 in volts",
-				*meter.Voltage_AC_Phase_1, labels, now)
-		}
-		if meter.PowerReal_P_Phase_1 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L1"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_real_watts", "Meter real power phase 1 in watts",
-				*meter.PowerReal_P_Phase_1, labels, now)
-		}
-		if meter.PowerReactive_Q_Phase_1 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L1"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_reactive_var", "Meter reactive power phase 1 in VAR",
-				*meter.PowerReactive_Q_Phase_1, labels, now)
-		}
-		if meter.PowerApparent_S_Phase_1 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L1"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_apparent_va", "Meter apparent power phase 1 in VA",
-				*meter.PowerApparent_S_Phase_1, labels, now)
-		}
-		if meter.PowerFactor_Phase_1 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L1"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_factor", "Meter power factor phase 1",
-				*meter.PowerFactor_Phase_1, labels, now)
-		}
+		c.addPhaseGauge(ms, "fronius_meter_current", "Meter current per phase", "A", meter.Current_AC_Phase_1, "L1", now)
+		c.addPhaseGauge(ms, "fronius_meter_voltage", "Meter voltage per phase", "V", meter.Voltage_AC_Phase_1, "L1", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_real", "Meter real power per phase", "W", meter.PowerReal_P_Phase_1, "L1", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_reactive", "Meter reactive power per phase", "var", meter.PowerReactive_Q_Phase_1, "L1", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_apparent", "Meter apparent power per phase", "VA", meter.PowerApparent_S_Phase_1, "L1", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_factor", "Meter power factor per phase", "1", meter.PowerFactor_Phase_1, "L1", now)
 
 		// Phase 2
-		if meter.Current_AC_Phase_2 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L2"}
-			c.addGaugeMetric(metrics, "fronius_meter_current_amps", "Meter current phase 2 in amps",
-				*meter.Current_AC_Phase_2, labels, now)
-		}
-		if meter.Voltage_AC_Phase_2 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L2"}
-			c.addGaugeMetric(metrics, "fronius_meter_voltage_volts", "Meter voltage phase 2 in volts",
-				*meter.Voltage_AC_Phase_2, labels, now)
-		}
-		if meter.PowerReal_P_Phase_2 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L2"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_real_watts", "Meter real power phase 2 in watts",
-				*meter.PowerReal_P_Phase_2, labels, now)
-		}
-		if meter.PowerReactive_Q_Phase_2 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L2"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_reactive_var", "Meter reactive power phase 2 in VAR",
-				*meter.PowerReactive_Q_Phase_2, labels, now)
-		}
-		if meter.PowerApparent_S_Phase_2 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L2"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_apparent_va", "Meter apparent power phase 2 in VA",
-				*meter.PowerApparent_S_Phase_2, labels, now)
-		}
-		if meter.PowerFactor_Phase_2 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L2"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_factor", "Meter power factor phase 2",
-				*meter.PowerFactor_Phase_2, labels, now)
-		}
+		c.addPhaseGauge(ms, "fronius_meter_current", "Meter current per phase", "A", meter.Current_AC_Phase_2, "L2", now)
+		c.addPhaseGauge(ms, "fronius_meter_voltage", "Meter voltage per phase", "V", meter.Voltage_AC_Phase_2, "L2", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_real", "Meter real power per phase", "W", meter.PowerReal_P_Phase_2, "L2", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_reactive", "Meter reactive power per phase", "var", meter.PowerReactive_Q_Phase_2, "L2", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_apparent", "Meter apparent power per phase", "VA", meter.PowerApparent_S_Phase_2, "L2", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_factor", "Meter power factor per phase", "1", meter.PowerFactor_Phase_2, "L2", now)
 
 		// Phase 3
-		if meter.Current_AC_Phase_3 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L3"}
-			c.addGaugeMetric(metrics, "fronius_meter_current_amps", "Meter current phase 3 in amps",
-				*meter.Current_AC_Phase_3, labels, now)
-		}
-		if meter.Voltage_AC_Phase_3 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L3"}
-			c.addGaugeMetric(metrics, "fronius_meter_voltage_volts", "Meter voltage phase 3 in volts",
-				*meter.Voltage_AC_Phase_3, labels, now)
-		}
-		if meter.PowerReal_P_Phase_3 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L3"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_real_watts", "Meter real power phase 3 in watts",
-				*meter.PowerReal_P_Phase_3, labels, now)
-		}
-		if meter.PowerReactive_Q_Phase_3 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L3"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_reactive_var", "Meter reactive power phase 3 in VAR",
-				*meter.PowerReactive_Q_Phase_3, labels, now)
-		}
-		if meter.PowerApparent_S_Phase_3 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L3"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_apparent_va", "Meter apparent power phase 3 in VA",
-				*meter.PowerApparent_S_Phase_3, labels, now)
-		}
-		if meter.PowerFactor_Phase_3 != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "L3"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_factor", "Meter power factor phase 3",
-				*meter.PowerFactor_Phase_3, labels, now)
-		}
+		c.addPhaseGauge(ms, "fronius_meter_current", "Meter current per phase", "A", meter.Current_AC_Phase_3, "L3", now)
+		c.addPhaseGauge(ms, "fronius_meter_voltage", "Meter voltage per phase", "V", meter.Voltage_AC_Phase_3, "L3", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_real", "Meter real power per phase", "W", meter.PowerReal_P_Phase_3, "L3", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_reactive", "Meter reactive power per phase", "var", meter.PowerReactive_Q_Phase_3, "L3", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_apparent", "Meter apparent power per phase", "VA", meter.PowerApparent_S_Phase_3, "L3", now)
+		c.addPhaseGauge(ms, "fronius_meter_power_factor", "Meter power factor per phase", "1", meter.PowerFactor_Phase_3, "L3", now)
 
 		// Sum
 		if meter.Current_AC_Sum != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "Sum"}
-			c.addGaugeMetric(metrics, "fronius_meter_current_amps", "Meter current sum in amps",
-				*meter.Current_AC_Sum, labels, now)
+			c.addGauge(ms, "fronius_meter_current_sum", "Meter current sum", "A", *meter.Current_AC_Sum, nil, now)
 		}
 		if meter.PowerReal_P_Sum != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "Sum"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_real_watts", "Meter real power sum in watts",
-				*meter.PowerReal_P_Sum, labels, now)
+			c.addGauge(ms, "fronius_meter_power_real_sum", "Meter real power sum", "W", *meter.PowerReal_P_Sum, nil, now)
 		}
 		if meter.PowerReactive_Q_Sum != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "Sum"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_reactive_var", "Meter reactive power sum in VAR",
-				*meter.PowerReactive_Q_Sum, labels, now)
+			c.addGauge(ms, "fronius_meter_power_reactive_sum", "Meter reactive power sum", "var", *meter.PowerReactive_Q_Sum, nil, now)
 		}
 		if meter.PowerApparent_S_Sum != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "Sum"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_apparent_va", "Meter apparent power sum in VA",
-				*meter.PowerApparent_S_Sum, labels, now)
+			c.addGauge(ms, "fronius_meter_power_apparent_sum", "Meter apparent power sum", "VA", *meter.PowerApparent_S_Sum, nil, now)
 		}
 		if meter.PowerFactor_Sum != nil {
-			labels := map[string]string{"device_id": deviceID, "phase": "Sum"}
-			c.addGaugeMetric(metrics, "fronius_meter_power_factor", "Meter power factor sum",
-				*meter.PowerFactor_Sum, labels, now)
+			c.addGauge(ms, "fronius_meter_power_factor_sum", "Meter power factor sum", "1", *meter.PowerFactor_Sum, nil, now)
 		}
 
-		// Energy
+		// Energy (kumulativ, monoton)
 		if meter.EnergyReal_WAC_Sum_Consumed != nil {
-			labels := map[string]string{"device_id": deviceID}
-			c.addSumMetric(metrics, "fronius_meter_energy_consumed_wh", "Meter energy consumed in watt-hours",
-				*meter.EnergyReal_WAC_Sum_Consumed, labels, now, true)
+			c.addSum(ms, "fronius_meter_energy_consumed", "Meter energy consumed", "Wh",
+				*meter.EnergyReal_WAC_Sum_Consumed, nil, now, true)
 		}
 		if meter.EnergyReal_WAC_Sum_Produced != nil {
-			labels := map[string]string{"device_id": deviceID}
-			c.addSumMetric(metrics, "fronius_meter_energy_produced_wh", "Meter energy produced in watt-hours",
-				*meter.EnergyReal_WAC_Sum_Produced, labels, now, true)
+			c.addSum(ms, "fronius_meter_energy_produced", "Meter energy produced", "Wh",
+				*meter.EnergyReal_WAC_Sum_Produced, nil, now, true)
 		}
 
 		// Frequency
 		if meter.Frequency_Phase_Average != nil {
-			labels := map[string]string{"device_id": deviceID}
-			c.addGaugeMetric(metrics, "fronius_meter_frequency_hz", "Meter frequency in Hz",
-				*meter.Frequency_Phase_Average, labels, now)
+			c.addGauge(ms, "fronius_meter_frequency", "Meter frequency", "Hz", *meter.Frequency_Phase_Average, nil, now)
 		}
 	}
 }
 
 // ======================== Storage/Battery Conversion ========================
 
-func (c *Converter) convertStorage(metrics pmetric.MetricSlice, storageData StorageRealtimeData, now pcommon.Timestamp) {
+func (c *Converter) convertStorage(metrics pmetric.Metrics, storageData StorageRealtimeData, now pcommon.Timestamp) {
 	for deviceID, storage := range storageData {
 		ctrl := storage.Controller
-		labels := map[string]string{"device_id": deviceID}
+		attrs := map[string]string{
+			"fronius.component":            "battery",
+			"fronius.battery.id":           deviceID,
+			"fronius.battery.serial":       ctrl.Details.Serial,
+			"fronius.battery.model":        ctrl.Details.Model,
+			"fronius.battery.manufacturer": ctrl.Details.Manufacturer,
+		}
+		ms := c.newResource(metrics, attrs)
 
-		// SOC
-		c.addGaugeMetric(metrics, "fronius_battery_soc_percent", "Battery state of charge in percent",
-			ctrl.StateOfCharge_Relative, labels, now)
-
-		// Voltage
-		c.addGaugeMetric(metrics, "fronius_battery_voltage_dc_volts", "Battery DC voltage in volts",
-			ctrl.Voltage_DC, labels, now)
-
-		// Current
-		c.addGaugeMetric(metrics, "fronius_battery_current_dc_amps", "Battery DC current in amps",
-			ctrl.Current_DC, labels, now)
-
-		// Temperature
-		c.addGaugeMetric(metrics, "fronius_battery_temperature_celsius", "Battery cell temperature in celsius",
-			ctrl.Temperature_Cell, labels, now)
-
-		// Capacity
-		c.addGaugeMetric(metrics, "fronius_battery_capacity_max_wh", "Battery maximum capacity in watt-hours",
-			ctrl.Capacity_Maximum, labels, now)
-
-		// Status Code
-		c.addGaugeMetric(metrics, "fronius_battery_status_code", "Battery status code",
-			ctrl.Status_BatteryCell, labels, now)
+		c.addGauge(ms, "fronius_battery_soc", "Battery state of charge", "%", ctrl.StateOfCharge_Relative, nil, now)
+		c.addGauge(ms, "fronius_battery_voltage_dc", "Battery DC voltage", "V", ctrl.Voltage_DC, nil, now)
+		c.addGauge(ms, "fronius_battery_current_dc", "Battery DC current", "A", ctrl.Current_DC, nil, now)
+		c.addGauge(ms, "fronius_battery_temperature", "Battery cell temperature", "Cel", ctrl.Temperature_Cell, nil, now)
+		c.addGauge(ms, "fronius_battery_capacity_max", "Battery maximum capacity", "Wh", ctrl.Capacity_Maximum, nil, now)
+		c.addGauge(ms, "fronius_battery_status_code", "Battery status code", "1", ctrl.Status_BatteryCell, nil, now)
 	}
+}
+
+// ======================== Ohmpilot Conversion ========================
+
+func (c *Converter) convertOhmpilot(metrics pmetric.Metrics, data OhmpilotRealtimeData, now pcommon.Timestamp) {
+	for deviceID, ohm := range data {
+		attrs := map[string]string{
+			"fronius.component":             "ohmpilot",
+			"fronius.ohmpilot.id":           deviceID,
+			"fronius.ohmpilot.serial":       ohm.Details.Serial,
+			"fronius.ohmpilot.model":        ohm.Details.Model,
+			"fronius.ohmpilot.manufacturer": ohm.Details.Manufacturer,
+			"fronius.ohmpilot.hardware":     ohm.Details.Hardware,
+			"fronius.ohmpilot.software":     ohm.Details.Software,
+		}
+		ms := c.newResource(metrics, attrs)
+
+		c.addGauge(ms, "fronius_ohmpilot_power", "Ohmpilot real power", "W", ohm.PowerReal_PAC_Sum, nil, now)
+		c.addSum(ms, "fronius_ohmpilot_energy_consumed", "Ohmpilot energy consumed", "Wh",
+			ohm.EnergyReal_WAC_Sum_Consumed, nil, now, true)
+		c.addGauge(ms, "fronius_ohmpilot_temperature", "Ohmpilot heating element temperature", "Cel",
+			ohm.Temperature_Channel_1, nil, now)
+		c.addGauge(ms, "fronius_ohmpilot_state_code", "Ohmpilot state code", "1",
+			ohm.CodeOfState, nil, now)
+	}
+}
+
+// ======================== Scrape Telemetry Conversion ========================
+
+func (c *Converter) convertScrapeTelemetry(metrics pmetric.Metrics, stats *ScrapeStats, now pcommon.Timestamp) {
+	ms := c.newResource(metrics, map[string]string{
+		"fronius.component": "scraper",
+	})
+
+	c.addGauge(ms, "fronius_scrape_duration_seconds", "Scrape cycle duration", "s",
+		stats.DurationSeconds, nil, now)
+	c.addSumInt(ms, "fronius_scrape_errors_total", "Total scrape errors", "1",
+		stats.Errors, nil, now, true)
+	successVal := 0.0
+	if stats.Success {
+		successVal = 1.0
+	}
+	c.addGauge(ms, "fronius_scrape_success", "1 if last scrape had no errors", "1",
+		successVal, nil, now)
 }
 
 // ======================== Helper Functions ========================
 
-// addGaugeMetric erstellt oder aktualisiert eine Gauge-Metrik.
-func (c *Converter) addGaugeMetric(
-	metrics pmetric.MetricSlice,
-	name string,
-	description string,
+// addPhaseGauge ist eine Convenience-Wrapper für Phase-Metriken (mit Pointer-Wert).
+func (c *Converter) addPhaseGauge(
+	ms pmetric.MetricSlice,
+	name, desc, unit string,
+	value *float64,
+	phase string,
+	now pcommon.Timestamp,
+) {
+	if value == nil {
+		return
+	}
+	c.addGauge(ms, name, desc, unit, *value, map[string]string{"phase": phase}, now)
+}
+
+// addGauge erstellt eine Gauge-Metrik.
+func (c *Converter) addGauge(
+	ms pmetric.MetricSlice,
+	name, desc, unit string,
 	value float64,
 	labels map[string]string,
 	now pcommon.Timestamp,
 ) {
-	metric := pmetric.NewMetric()
-	metric.SetName(name)
-	metric.SetDescription(description)
-	metric.SetUnit("")
+	m := ms.AppendEmpty()
+	m.SetName(name)
+	m.SetDescription(desc)
+	m.SetUnit(unit)
 
-	gauge := metric.SetEmptyGauge()
-	dp := gauge.DataPoints().AppendEmpty()
+	dp := m.SetEmptyGauge().DataPoints().AppendEmpty()
 	dp.SetDoubleValue(value)
 	dp.SetTimestamp(now)
-
-	if labels != nil {
-		for k, v := range labels {
-			dp.Attributes().PutStr(k, v)
-		}
+	for k, v := range labels {
+		dp.Attributes().PutStr(k, v)
 	}
-
-	metric.CopyTo(metrics.AppendEmpty())
 }
 
-// addSumMetric erstellt oder aktualisiert eine Sum-Metrik (kumulativ).
-func (c *Converter) addSumMetric(
-	metrics pmetric.MetricSlice,
-	name string,
-	description string,
+// addSum erstellt eine kumulative Sum-Metrik (double).
+func (c *Converter) addSum(
+	ms pmetric.MetricSlice,
+	name, desc, unit string,
 	value float64,
 	labels map[string]string,
 	now pcommon.Timestamp,
 	monotonic bool,
 ) {
-	metric := pmetric.NewMetric()
-	metric.SetName(name)
-	metric.SetDescription(description)
-	metric.SetUnit("")
+	m := ms.AppendEmpty()
+	m.SetName(name)
+	m.SetDescription(desc)
+	m.SetUnit(unit)
 
-	sum := metric.SetEmptySum()
+	sum := m.SetEmptySum()
 	sum.SetIsMonotonic(monotonic)
 	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 
 	dp := sum.DataPoints().AppendEmpty()
 	dp.SetDoubleValue(value)
 	dp.SetTimestamp(now)
-
-	if labels != nil {
-		for k, v := range labels {
-			dp.Attributes().PutStr(k, v)
-		}
+	for k, v := range labels {
+		dp.Attributes().PutStr(k, v)
 	}
+}
 
-	metric.CopyTo(metrics.AppendEmpty())
+// addSumInt erstellt eine kumulative Sum-Metrik (int).
+func (c *Converter) addSumInt(
+	ms pmetric.MetricSlice,
+	name, desc, unit string,
+	value int64,
+	labels map[string]string,
+	now pcommon.Timestamp,
+	monotonic bool,
+) {
+	m := ms.AppendEmpty()
+	m.SetName(name)
+	m.SetDescription(desc)
+	m.SetUnit(unit)
+
+	sum := m.SetEmptySum()
+	sum.SetIsMonotonic(monotonic)
+	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+
+	dp := sum.DataPoints().AppendEmpty()
+	dp.SetIntValue(value)
+	dp.SetTimestamp(now)
+	for k, v := range labels {
+		dp.Attributes().PutStr(k, v)
+	}
 }

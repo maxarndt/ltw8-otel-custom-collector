@@ -15,6 +15,8 @@ type MetricsConfig struct {
 	MeterRealtime bool `mapstructure:"meter_realtime"`
 	// StorageRealtime: Batterie/Storage-Daten (SOC, Spannung, Strom, Temperatur)
 	StorageRealtime bool `mapstructure:"storage_realtime"`
+	// OhmpilotRealtime: Ohmpilot-Daten (Heizstab-Energie, Leistung, Temperatur, State)
+	OhmpilotRealtime bool `mapstructure:"ohmpilot_realtime"`
 	// InverterInfo: Inverter-Metadaten (Serial, Modell, CustomName, etc.)
 	InverterInfo bool `mapstructure:"inverter_info"`
 }
@@ -44,7 +46,7 @@ func (c *Config) Validate() error {
 	}
 	// Mindestens ein Endpoint sollte enabled sein (optional - Warning nur, kein Error)
 	if !c.Metrics.PowerFlow && !c.Metrics.InverterRealtime && !c.Metrics.MeterRealtime &&
-		!c.Metrics.StorageRealtime && !c.Metrics.InverterInfo {
+		!c.Metrics.StorageRealtime && !c.Metrics.OhmpilotRealtime && !c.Metrics.InverterInfo {
 		return fmt.Errorf("at least one metrics endpoint must be enabled")
 	}
 	return nil

@@ -54,8 +54,8 @@ func (r *froniusReceiver) Start(ctx context.Context, host component.Host) error 
 	}
 	r.scraper = scraper
 
-	// Create Converter
-	r.converter = NewConverter(r.settings.Logger)
+	// Create Converter (mit Endpoint-Resource-Attribut)
+	r.converter = NewConverterWithEndpoint(r.settings.Logger, r.config.Endpoint)
 
 	// Create context for goroutine
 	r.ctx, r.cancel = context.WithCancel(ctx)

@@ -61,6 +61,56 @@ func TestScraperPowerFlow(t *testing.T) {
 	assert.Equal(t, 5000.0, result.Site.P_PV)
 }
 
+func TestScraperOhmpilot(t *testing.T) {
+	logger := zap.NewNop()
+
+	mockResp := ResponseEnvelope{
+		Head: Head{Status: Status{Code: 0}},
+		Body: BodyWrapper{
+			Data: OhmpilotRealtimeData{
+				"0": {
+					Details:                     OhmpilotDetails{Manufacturer: "Fronius", Model: "Ohmpilot", Serial: "X"},
+					CodeOfState:                 0,
+					EnergyReal_WAC_Sum_Consumed: 99999,
+					PowerReal_PAC_Sum:           1234,
+					Temperature_Channel_1:       55,
+				},
+			},
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(mockResp)
+	}))
+	defer server.Close()
+
+	scraper, err := NewFroniusScraper(server.URL, 10*time.Second, MetricsConfig{OhmpilotRealtime: true}, logger)
+	assert.NoError(t, err)
+
+	result, err := scraper.getOhmpilotRealtimeData(context.Background())
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, 1234.0, result["0"].PowerReal_PAC_Sum)
+}
+
+func TestScraperCollectInverterIDsFallback(t *testing.T) {
+	s := &FroniusScraper{logger: zap.NewNop()}
+	ids := s.collectInverterIDs(&ScrapedMetrics{})
+	assert.Equal(t, []string{"1"}, ids, "Fallback-ID muss '1' sein")
+}
+
+func TestScraperCollectInverterIDsFromInfo(t *testing.T) {
+	s := &FroniusScraper{logger: zap.NewNop()}
+	ids := s.collectInverterIDs(&ScrapedMetrics{
+		Info: InverterInfoData{
+			"1": {UniqueID: "A"},
+			"2": {UniqueID: "B"},
+		},
+	})
+	assert.ElementsMatch(t, []string{"1", "2"}, ids)
+}
+
 func TestScraperErrorHandling(t *testing.T) {
 	logger := zap.NewNop()
 

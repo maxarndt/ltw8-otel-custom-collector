@@ -35,57 +35,111 @@ func NewFroniusScraper(endpoint string, timeout time.Duration, metrics MetricsCo
 }
 
 // Scrape führt einen vollständigen Scrape-Zyklus durch.
+// Reihenfolge der Calls ist relevant: InverterInfo zuerst (für Inverter-IDs).
 func (s *FroniusScraper) Scrape(ctx context.Context) (*ScrapedMetrics, error) {
+	start := time.Now()
 	scraped := &ScrapedMetrics{
-		Timestamp: time.Now(),
+		Timestamp: start,
+		Inverters: make(InverterRealtimeMap),
 	}
 
-	// 1. PowerFlow Realtime Data
-	if s.metrics.PowerFlow {
-		if pf, err := s.getPowerFlowRealtimeData(ctx); err != nil {
-			s.logger.Warn("failed to fetch PowerFlowRealtimeData", zap.Error(err))
-		} else {
-			scraped.PowerFlow = pf
-		}
-	}
+	var errCount int64
 
-	// 2. Inverter Realtime Data (CommonInverterData)
-	if s.metrics.InverterRealtime {
-		if inv, err := s.getInverterRealtimeData(ctx); err != nil {
-			s.logger.Warn("failed to fetch InverterRealtimeData", zap.Error(err))
-		} else {
-			scraped.Inverter = inv
-		}
-	}
-
-	// 3. Meter Realtime Data
-	if s.metrics.MeterRealtime {
-		if meter, err := s.getMeterRealtimeData(ctx); err != nil {
-			s.logger.Warn("failed to fetch MeterRealtimeData", zap.Error(err))
-		} else {
-			scraped.Meter = meter
-		}
-	}
-
-	// 4. Storage Realtime Data
-	if s.metrics.StorageRealtime {
-		if storage, err := s.getStorageRealtimeData(ctx); err != nil {
-			s.logger.Warn("failed to fetch StorageRealtimeData", zap.Error(err))
-		} else {
-			scraped.Storage = storage
-		}
-	}
-
-	// 5. Inverter Info
+	// 1. Inverter Info (zuerst — liefert Inverter-IDs für nachfolgende Calls)
 	if s.metrics.InverterInfo {
 		if info, err := s.getInverterInfo(ctx); err != nil {
 			s.logger.Warn("failed to fetch InverterInfo", zap.Error(err))
+			errCount++
 		} else {
 			scraped.Info = info
 		}
 	}
 
+	// 2. PowerFlow Realtime Data (liefert ebenfalls Inverter-IDs als Fallback)
+	if s.metrics.PowerFlow {
+		if pf, err := s.getPowerFlowRealtimeData(ctx); err != nil {
+			s.logger.Warn("failed to fetch PowerFlowRealtimeData", zap.Error(err))
+			errCount++
+		} else {
+			scraped.PowerFlow = pf
+		}
+	}
+
+	// 3. Inverter Realtime Data (CommonInverterData) — pro bekannter Inverter-ID
+	if s.metrics.InverterRealtime {
+		ids := s.collectInverterIDs(scraped)
+		for _, id := range ids {
+			if inv, err := s.getInverterRealtimeData(ctx, id); err != nil {
+				s.logger.Warn("failed to fetch InverterRealtimeData",
+					zap.String("device_id", id), zap.Error(err))
+				errCount++
+			} else {
+				scraped.Inverters[id] = inv
+			}
+		}
+	}
+
+	// 4. Meter Realtime Data
+	if s.metrics.MeterRealtime {
+		if meter, err := s.getMeterRealtimeData(ctx); err != nil {
+			s.logger.Warn("failed to fetch MeterRealtimeData", zap.Error(err))
+			errCount++
+		} else {
+			scraped.Meter = meter
+		}
+	}
+
+	// 5. Storage Realtime Data
+	if s.metrics.StorageRealtime {
+		if storage, err := s.getStorageRealtimeData(ctx); err != nil {
+			s.logger.Warn("failed to fetch StorageRealtimeData", zap.Error(err))
+			errCount++
+		} else {
+			scraped.Storage = storage
+		}
+	}
+
+	// 6. Ohmpilot Realtime Data
+	if s.metrics.OhmpilotRealtime {
+		if ohm, err := s.getOhmpilotRealtimeData(ctx); err != nil {
+			s.logger.Warn("failed to fetch OhmpilotRealtimeData", zap.Error(err))
+			errCount++
+		} else {
+			scraped.Ohmpilot = ohm
+		}
+	}
+
+	scraped.Stats = ScrapeStats{
+		DurationSeconds: time.Since(start).Seconds(),
+		Errors:          errCount,
+		Success:         errCount == 0,
+	}
+
 	return scraped, nil
+}
+
+// collectInverterIDs sammelt Inverter-IDs aus Info bzw. PowerFlow.
+// Fallback: ["1"] (Default Device ID).
+func (s *FroniusScraper) collectInverterIDs(scraped *ScrapedMetrics) []string {
+	idSet := map[string]struct{}{}
+	if scraped.Info != nil {
+		for id := range scraped.Info {
+			idSet[id] = struct{}{}
+		}
+	}
+	if scraped.PowerFlow != nil {
+		for id := range scraped.PowerFlow.Inverters {
+			idSet[id] = struct{}{}
+		}
+	}
+	if len(idSet) == 0 {
+		return []string{"1"}
+	}
+	ids := make([]string, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // getPowerFlowRealtimeData fetcht PowerFlow Daten von GetPowerFlowRealtimeData.fcgi.
@@ -98,12 +152,12 @@ func (s *FroniusScraper) getPowerFlowRealtimeData(ctx context.Context) (*PowerFl
 	return data, nil
 }
 
-// getInverterRealtimeData fetcht Inverter Realtime Daten.
-func (s *FroniusScraper) getInverterRealtimeData(ctx context.Context) (*InverterRealtimeData, error) {
+// getInverterRealtimeData fetcht Inverter Realtime Daten für eine spezifische Device-ID.
+func (s *FroniusScraper) getInverterRealtimeData(ctx context.Context, deviceID string) (*InverterRealtimeData, error) {
 	path := "/solar_api/v1/GetInverterRealtimeData.cgi"
 	params := url.Values{
 		"Scope":          {"Device"},
-		"DeviceId":       {"1"},
+		"DeviceId":       {deviceID},
 		"DataCollection": {"CommonInverterData"},
 	}
 	data := &InverterRealtimeData{}
@@ -133,6 +187,19 @@ func (s *FroniusScraper) getStorageRealtimeData(ctx context.Context) (StorageRea
 		"Scope": {"System"},
 	}
 	data := make(StorageRealtimeData)
+	if err := s.fetchJSON(ctx, path, params, &data); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// getOhmpilotRealtimeData fetcht Ohmpilot Daten.
+func (s *FroniusScraper) getOhmpilotRealtimeData(ctx context.Context) (OhmpilotRealtimeData, error) {
+	path := "/solar_api/v1/GetOhmpilotRealtimeData.cgi"
+	params := url.Values{
+		"Scope": {"System"},
+	}
+	data := make(OhmpilotRealtimeData)
 	if err := s.fetchJSON(ctx, path, params, &data); err != nil {
 		return nil, err
 	}
