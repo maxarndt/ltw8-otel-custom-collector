@@ -1,0 +1,96 @@
+# Example configuration for the Fronius Receiver
+# 
+# This configuration scrapes a Fronius Inverter (with optional Smart Meter and Battery)
+# and converts the data to OpenTelemetry metrics.
+
+receivers:
+  fronius:
+    # endpoint: URL of the Fronius device (no trailing slash)
+    # Example: "http://192.168.1.10" for local network
+    #          "http://fronius.example.com" for remote
+    endpoint: "http://192.168.1.10"
+    
+    # collection_interval: How often to scrape the inverter (default: 60s)
+    # Higher frequency = more load on the inverter
+    # Recommended: 30s - 5m depending on your needs
+    collection_interval: 60s
+    
+    # timeout: HTTP request timeout per API call (default: 10s)
+    timeout: 10s
+    
+    # metrics: Which Fronius API endpoints to fetch
+    metrics:
+      # power_flow: Site-level power flow data (PV, Grid, Load, Battery, Autonomy)
+      power_flow: true
+      
+      # inverter_realtime: Inverter-specific realtime data (AC/DC voltages, currents, power, energy)
+      inverter_realtime: true
+      
+      # meter_realtime: Smart Meter data (if available)
+      # Set to false if no Smart Meter is connected
+      meter_realtime: true
+      
+      # storage_realtime: Battery/Storage data (if available)
+      # Set to false if no battery system is installed
+      storage_realtime: true
+      
+      # inverter_info: Inverter metadata (serial, model, custom name)
+      inverter_info: true
+
+exporters:
+  prometheusremotewrite:
+    endpoint: "http://victoriametrics:8428/api/v1/write"
+
+service:
+  pipelines:
+    metrics:
+      receivers: [fronius]
+      exporters: [prometheusremotewrite]
+
+# ======================== Metrics Emitted ========================
+#
+# This receiver emits the following metrics:
+#
+# Site Level (PowerFlow):
+#   - fronius_site_pv_power_watts (Gauge)
+#   - fronius_site_grid_power_watts (Gauge)
+#   - fronius_site_load_power_watts (Gauge)
+#   - fronius_site_battery_power_watts (Gauge)
+#   - fronius_site_energy_total_wh (Sum, monotonic)
+#   - fronius_site_energy_year_wh (Sum)
+#   - fronius_site_energy_day_wh (Sum)
+#   - fronius_site_autonomy_ratio (Gauge)
+#   - fronius_site_selfconsumption_ratio (Gauge)
+#
+# Inverter Level (PowerFlow + InverterRealtime):
+#   - fronius_inverter_ac_power_watts (Gauge)
+#   - fronius_inverter_ac_voltage_volts (Gauge)
+#   - fronius_inverter_ac_current_amps (Gauge)
+#   - fronius_inverter_ac_frequency_hz (Gauge)
+#   - fronius_inverter_dc_voltage_volts (Gauge) [labels: mppt=1/2/3]
+#   - fronius_inverter_dc_current_amps (Gauge) [labels: mppt=1/2/3]
+#   - fronius_inverter_energy_total_wh (Sum, monotonic)
+#   - fronius_inverter_energy_year_wh (Sum)
+#   - fronius_inverter_energy_day_wh (Sum)
+#   - fronius_inverter_soc_percent (Gauge)
+#   - fronius_inverter_status_code (Gauge)
+#   - fronius_inverter_error_code (Gauge)
+#
+# Smart Meter Level (MeterRealtime):
+#   - fronius_meter_current_amps (Gauge) [labels: phase=L1/L2/L3/Sum]
+#   - fronius_meter_voltage_volts (Gauge) [labels: phase=L1/L2/L3]
+#   - fronius_meter_power_real_watts (Gauge) [labels: phase=L1/L2/L3/Sum]
+#   - fronius_meter_power_reactive_var (Gauge) [labels: phase=L1/L2/L3/Sum]
+#   - fronius_meter_power_apparent_va (Gauge) [labels: phase=L1/L2/L3/Sum]
+#   - fronius_meter_power_factor (Gauge) [labels: phase=L1/L2/L3/Sum]
+#   - fronius_meter_energy_consumed_wh (Sum, monotonic)
+#   - fronius_meter_energy_produced_wh (Sum, monotonic)
+#   - fronius_meter_frequency_hz (Gauge)
+#
+# Battery Level (StorageRealtime):
+#   - fronius_battery_soc_percent (Gauge)
+#   - fronius_battery_voltage_dc_volts (Gauge)
+#   - fronius_battery_current_dc_amps (Gauge)
+#   - fronius_battery_temperature_celsius (Gauge)
+#   - fronius_battery_capacity_max_wh (Gauge)
+#   - fronius_battery_status_code (Gauge)

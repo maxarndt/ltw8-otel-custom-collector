@@ -1,0 +1,34 @@
+# Build & Binaries
+collector/build/
+dist/
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.test
+
+# Go & Dependencies
+*.prof
+vendor/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local Configuration
+.env
+.env.local
+*.local
+
+# Temporary
+*.tmp
+*.bak
