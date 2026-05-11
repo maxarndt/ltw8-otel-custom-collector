@@ -70,7 +70,7 @@ receivers:
 
 exporters:
   prometheusremotewrite:
-    endpoint: "http://localhost:8428/api/v1/write"
+    endpoint: "http://victoriametrics.observability.svc.cluster.local:8428/api/v1/write"
     resource_to_telemetry_conversion:
       enabled: true
     tls:

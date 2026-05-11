@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: custom-collector
-  namespace: monitoring
+  namespace: observability
   labels:
     app: custom-collector
 spec:

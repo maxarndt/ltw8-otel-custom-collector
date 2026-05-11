@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: custom-collector
-  namespace: monitoring
+  namespace: observability
   labels:
     app: custom-collector
 spec:
@@ -17,10 +17,12 @@ spec:
       labels:
         app: custom-collector
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: custom-collector
-          image: custom-collector:latest
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/maxarndt/ltw8-otel-custom-collector:latest
+          imagePullPolicy: Always
           args:
             - --config=/etc/otelcol/collector-config.yaml
           ports:

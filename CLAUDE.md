@@ -156,8 +156,8 @@ knxreceiver/
 ├── deploy/
 │   ├── namespace.yaml
 │   ├── deployment.yaml        ← 1 Replica, ConfigMap-Mount, Liveness/Readiness
-│   ├── configmap.yaml         ← collector-config.yaml als ConfigMap
 │   └── service.yaml           ← Health-Check Port 13133 (intern)
+├── Makefile                   ← deploy-Target: ConfigMap aus collector-config.yaml + kubectl apply
 ├── Dockerfile                 ← Multi-stage: ocb build → distroless run
 └── go.mod                     ← go 1.25
 ```
