@@ -35,7 +35,7 @@ func createDefaultConfig() component.Config {
 			InverterRealtime: true,
 			MeterRealtime:    true,
 			StorageRealtime:  true,
-			OhmpilotRealtime: true,
+			OhmpilotRealtime: false,
 			InverterInfo:     true,
 		},
 	}

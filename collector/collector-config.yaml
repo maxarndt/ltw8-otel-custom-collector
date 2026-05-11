@@ -66,10 +66,13 @@ receivers:
       meter_realtime: true
       storage_realtime: true
       inverter_info: true
+      ohmpilot_realtime: false
 
 exporters:
   prometheusremotewrite:
-    endpoint: "http://victoriametrics:8428/api/v1/write"
+    endpoint: "http://localhost:8428/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
     tls:
       insecure: true
   debug:
@@ -81,5 +84,5 @@ service:
     metrics:
       # receivers: [knx, syr, fronius]
       receivers: [fronius]
-      # exporters: [prometheusremotewrite]
-      exporters: [debug]
+      exporters: [prometheusremotewrite]
+      # exporters: [debug, prometheusremotewrite]

@@ -51,7 +51,7 @@ type PowerFlowInverter struct {
 // PowerFlowSite enthält Site-Level Powerflow-Daten.
 type PowerFlowSite struct {
 	BackupMode          *bool   `json:"BackupMode"`
-	BatteryStandby      string  `json:"BatteryStandby,omitempty"`
+	BatteryStandby      *bool   `json:"BatteryStandby,omitempty"`
 	E_Day               float64 `json:"E_Day"`   // Energy generated today in Wh
 	E_Year              float64 `json:"E_Year"`  // Energy generated this year in Wh
 	E_Total             float64 `json:"E_Total"` // Lifetime energy in Wh
