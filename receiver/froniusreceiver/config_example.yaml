@@ -1,0 +1,112 @@
+# Example configuration for the Fronius Receiver
+#
+# This configuration scrapes a Fronius Inverter (with optional Smart Meter,
+# Battery and Ohmpilot) and converts the data to OpenTelemetry metrics.
+
+receivers:
+  fronius:
+    # endpoint: URL of the Fronius device (no trailing slash)
+    endpoint: "http://192.168.1.10"
+
+    # collection_interval: How often to scrape the inverter (default: 60s)
+    collection_interval: 60s
+
+    # timeout: HTTP request timeout per API call (default: 10s)
+    timeout: 10s
+
+    # metrics: Which Fronius API endpoints to fetch
+    metrics:
+      power_flow: true         # Site-level power flow data
+      inverter_realtime: true  # Per-inverter detailed realtime data
+      meter_realtime: true     # Smart Meter (set false if none)
+      storage_realtime: true   # Battery (set false if none)
+      ohmpilot_realtime: true  # Ohmpilot (set false if none)
+      inverter_info: true      # Inverter metadata (used as resource attrs)
+
+exporters:
+  prometheusremotewrite:
+    endpoint: "http://victoriametrics:8428/api/v1/write"
+
+service:
+  pipelines:
+    metrics:
+      receivers: [fronius]
+      exporters: [prometheusremotewrite]
+
+# ======================== Metrics Emitted ========================
+#
+# Resource attributes (per ResourceMetrics block):
+#   Site:     fronius.component=site
+#   Inverter: fronius.component=inverter, fronius.inverter.id, .serial, .custom_name
+#   Meter:    fronius.component=meter, fronius.meter.id, .serial, .model, .manufacturer
+#   Battery:  fronius.component=battery, fronius.battery.id, .serial, .model, .manufacturer
+#   Ohmpilot: fronius.component=ohmpilot, fronius.ohmpilot.id, .serial, .model, ...
+#   Scraper:  fronius.component=scraper
+# All blocks additionally carry: fronius.endpoint
+#
+# Metric names are unit-suffix-free; UCUM units are set on the metric (W, V, A,
+# Hz, Wh, Cel, %, 1, var, VA, s).
+#
+# Site Level (PowerFlow Site):
+#   - fronius_site_pv_power (Gauge, W)
+#   - fronius_site_grid_power (Gauge, W)
+#   - fronius_site_load_power (Gauge, W)
+#   - fronius_site_battery_power (Gauge, W)
+#   - fronius_site_energy_total (Sum monotonic, Wh)
+#   - fronius_site_energy_year (Sum monotonic, Wh)
+#   - fronius_site_energy_day (Sum monotonic, Wh)
+#   - fronius_site_autonomy_ratio (Gauge, %)
+#   - fronius_site_selfconsumption_ratio (Gauge, %)
+#
+# Inverter Level (one ResourceMetrics per inverter):
+#   - fronius_inverter_ac_power (Gauge, W)
+#   - fronius_inverter_ac_apparent_power (Gauge, VA)
+#   - fronius_inverter_ac_voltage (Gauge, V)
+#   - fronius_inverter_ac_current (Gauge, A)
+#   - fronius_inverter_ac_frequency (Gauge, Hz)
+#   - fronius_inverter_ac_voltage_phase (Gauge, V)  [labels: phase=L1/L2/L3]
+#   - fronius_inverter_ac_current_phase (Gauge, A)  [labels: phase=L1/L2/L3]
+#   - fronius_inverter_temperature_ambient (Gauge, Cel)
+#   - fronius_inverter_dc_voltage (Gauge, V)        [labels: mppt=1/2/3]
+#   - fronius_inverter_dc_current (Gauge, A)        [labels: mppt=1/2/3]
+#   - fronius_inverter_energy_total (Sum monotonic, Wh)
+#   - fronius_inverter_energy_year (Sum monotonic, Wh)
+#   - fronius_inverter_energy_day (Sum monotonic, Wh)
+#   - fronius_inverter_soc (Gauge, %)
+#   - fronius_inverter_status_code (Gauge, 1)
+#   - fronius_inverter_error_code (Gauge, 1)
+#
+# Smart Meter Level (one ResourceMetrics per meter):
+#   - fronius_meter_current (Gauge, A)              [labels: phase=L1/L2/L3]
+#   - fronius_meter_voltage (Gauge, V)              [labels: phase=L1/L2/L3]
+#   - fronius_meter_power_real (Gauge, W)           [labels: phase=L1/L2/L3]
+#   - fronius_meter_power_reactive (Gauge, var)     [labels: phase=L1/L2/L3]
+#   - fronius_meter_power_apparent (Gauge, VA)      [labels: phase=L1/L2/L3]
+#   - fronius_meter_power_factor (Gauge, 1)         [labels: phase=L1/L2/L3]
+#   - fronius_meter_current_sum (Gauge, A)
+#   - fronius_meter_power_real_sum (Gauge, W)
+#   - fronius_meter_power_reactive_sum (Gauge, var)
+#   - fronius_meter_power_apparent_sum (Gauge, VA)
+#   - fronius_meter_power_factor_sum (Gauge, 1)
+#   - fronius_meter_energy_consumed (Sum monotonic, Wh)
+#   - fronius_meter_energy_produced (Sum monotonic, Wh)
+#   - fronius_meter_frequency (Gauge, Hz)
+#
+# Battery Level (one ResourceMetrics per storage device):
+#   - fronius_battery_soc (Gauge, %)
+#   - fronius_battery_voltage_dc (Gauge, V)
+#   - fronius_battery_current_dc (Gauge, A)
+#   - fronius_battery_temperature (Gauge, Cel)
+#   - fronius_battery_capacity_max (Gauge, Wh)
+#   - fronius_battery_status_code (Gauge, 1)
+#
+# Ohmpilot Level (one ResourceMetrics per device):
+#   - fronius_ohmpilot_power (Gauge, W)
+#   - fronius_ohmpilot_energy_consumed (Sum monotonic, Wh)
+#   - fronius_ohmpilot_temperature (Gauge, Cel)
+#   - fronius_ohmpilot_state_code (Gauge, 1)
+#
+# Scraper Telemetry:
+#   - fronius_scrape_duration_seconds (Gauge, s)
+#   - fronius_scrape_errors_total (Sum monotonic, 1)
+#   - fronius_scrape_success (Gauge, 1)

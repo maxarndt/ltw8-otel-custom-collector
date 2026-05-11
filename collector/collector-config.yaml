@@ -56,15 +56,33 @@ receivers:
       RG1:
         enabled: true
 
+  fronius:
+    endpoint: "http://10.8.10.19"
+    collection_interval: 60s
+    timeout: 10s
+    metrics:
+      power_flow: true
+      inverter_realtime: true
+      meter_realtime: true
+      storage_realtime: true
+      inverter_info: true
+      ohmpilot_realtime: false
+
 exporters:
   prometheusremotewrite:
-    endpoint: "http://victoriametrics:8428/api/v1/write"
+    endpoint: "http://victoriametrics.observability.svc.cluster.local:8428/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
     tls:
       insecure: true
+  debug:
+    verbosity: detailed
 
 service:
   extensions: [health_check]
   pipelines:
     metrics:
-      receivers: [knx, syr]
+      # receivers: [knx, syr, fronius]
+      receivers: [fronius]
       exporters: [prometheusremotewrite]
+      # exporters: [debug, prometheusremotewrite]
