@@ -1,4 +1,4 @@
-module github.com/maxarndt/knxreceiver/receiver/syrreceiver
+module github.com/maxarndt/ltw8-otel-custom-collector/receiver/syrreceiver
 
 go 1.25.0
 

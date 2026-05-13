@@ -97,7 +97,7 @@ func (c *Converter) newResource(metrics pmetric.Metrics, attrs map[string]string
 		rm.Resource().Attributes().PutStr(k, v)
 	}
 	sm := rm.ScopeMetrics().AppendEmpty()
-	sm.Scope().SetName("github.com/maxarndt/knxreceiver/receiver/froniusreceiver")
+	sm.Scope().SetName("github.com/maxarndt/ltw8-otel-custom-collector/receiver/froniusreceiver")
 	return sm.Metrics()
 }
 

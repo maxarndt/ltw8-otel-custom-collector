@@ -3,14 +3,14 @@ dist:
   description: Custom OpenTelemetry Collector (KNX + SYR NeoSoft 2500 + Fronius Inverter)
   output_path: ./build
   otelcol_version: 0.149.0
-  module: github.com/maxarndt/knxreceiver/collector
+  module: github.com/maxarndt/ltw8-otel-custom-collector/collector
 
 receivers:
-  - gomod: github.com/maxarndt/knxreceiver/receiver/knxreceiver v0.0.1
+  - gomod: github.com/maxarndt/ltw8-otel-custom-collector/receiver/knxreceiver v0.0.1
     path: ../receiver/knxreceiver
-  - gomod: github.com/maxarndt/knxreceiver/receiver/syrreceiver v0.0.1
+  - gomod: github.com/maxarndt/ltw8-otel-custom-collector/receiver/syrreceiver v0.0.1
     path: ../receiver/syrreceiver
-  - gomod: github.com/maxarndt/knxreceiver/receiver/froniusreceiver v0.0.1
+  - gomod: github.com/maxarndt/ltw8-otel-custom-collector/receiver/froniusreceiver v0.0.1
     path: ../receiver/froniusreceiver
 
 exporters:

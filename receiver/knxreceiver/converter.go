@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
-const scopeName = "github.com/maxarndt/knxreceiver"
+const scopeName = "github.com/maxarndt/ltw8-otel-custom-collector/receiver/knxreceiver"
 
 // ConvertToMetrics builds a pmetric.Metrics from a decoded KNX group event value.
 // physicalAddr is the sender's KNX individual address (e.g. "1.1.5").

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	scopeName = "github.com/maxarndt/knxreceiver/receiver/syrreceiver"
+	scopeName = "github.com/maxarndt/ltw8-otel-custom-collector/receiver/syrreceiver"
 )
 
 // metricDef beschreibt eine bekannte SYR-Metrik.
