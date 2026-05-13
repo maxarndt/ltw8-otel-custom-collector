@@ -205,6 +205,65 @@ func TestReceiver_SkipsUnexportedAddress(t *testing.T) {
 	}
 }
 
+// TestReceiver_ReadStartup_DoesNotBlockInbound exercises B2: when many ReadStartup
+// requests are pending, an incoming GroupWrite must still be processed promptly —
+// listen() runs in parallel with readStartup().
+func TestReceiver_ReadStartup_DoesNotBlockInbound(t *testing.T) {
+	mock := newMockKNXClient()
+	sink := &consumertest.MetricsSink{}
+
+	// Custom config: 3 ReadStartup addresses with a 100ms gap = 300ms total — long
+	// enough that the test would fail in the old sequential implementation.
+	cfg := &Config{
+		Connection: ConnectionConfig{
+			Type:             ConnectionTypeRouter,
+			MulticastAddress: "224.0.23.12:3671",
+		},
+		ReadStartupInterval: 100 * time.Millisecond,
+		AddressConfigs: map[string]*AddressConfig{
+			"1/1/1": {Name: "a", DPT: "13.010", Export: true, MetricType: MetricTypeSum, ReadStartup: true},
+			"1/1/2": {Name: "b", DPT: "13.010", Export: true, MetricType: MetricTypeSum, ReadStartup: true},
+			"1/1/3": {Name: "c", DPT: "13.010", Export: true, MetricType: MetricTypeSum, ReadStartup: true},
+			"2/1/1": {Name: "temp", DPT: "9.001", Export: true, MetricType: MetricTypeGauge, ReadStartup: false},
+		},
+	}
+
+	set := receivertest.NewNopSettings(receivertest.NopType)
+	r := newKNXReceiver(set, cfg, sink)
+	orig := NewKNXClient
+	t.Cleanup(func() { NewKNXClient = orig })
+	NewKNXClient = func(_ ConnectionConfig) (KNXClient, error) { return mock, nil }
+
+	if err := r.Start(context.Background(), nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Push an event while readStartup is still iterating (well before 300ms).
+	ga, _ := cemi.NewGroupAddrString("2/1/1")
+	src, _ := cemi.NewIndividualAddrString("1.1.5")
+	mock.inbound <- knx.GroupEvent{
+		Command:     knx.GroupWrite,
+		Source:      src,
+		Destination: ga,
+		Data:        dpt.DPT_9001(22.5).Pack(),
+	}
+
+	// Give listen() a brief moment to consume the event — much shorter than the
+	// 300ms readStartup would need to finish.
+	time.Sleep(50 * time.Millisecond)
+
+	// Snapshot the metric count before shutdown to assert prompt processing.
+	got := len(sink.AllMetrics())
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = r.Shutdown(ctx)
+
+	if got == 0 {
+		t.Fatal("expected the GroupWrite to be processed while readStartup was still running")
+	}
+}
+
 func TestReceiver_ReadStartup(t *testing.T) {
 	mock := newMockKNXClient()
 	sink := &consumertest.MetricsSink{}

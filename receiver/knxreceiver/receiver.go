@@ -2,12 +2,14 @@ package knxreceiver
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/vapourismo/knx-go/knx"
 	"github.com/vapourismo/knx-go/knx/cemi"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
 )
@@ -18,6 +20,8 @@ type knxReceiver struct {
 	nextConsumer consumer.Metrics
 	cancel       context.CancelFunc
 	done         chan struct{}
+	startTime    pcommon.Timestamp
+	receiverID   string
 }
 
 func newKNXReceiver(set receiver.Settings, cfg *Config, next consumer.Metrics) *knxReceiver {
@@ -26,11 +30,13 @@ func newKNXReceiver(set receiver.Settings, cfg *Config, next consumer.Metrics) *
 		logger:       set.Logger,
 		nextConsumer: next,
 		done:         make(chan struct{}),
+		receiverID:   set.ID.String(),
 	}
 }
 
 // Start launches the KNX receiver goroutine and returns immediately.
 func (r *knxReceiver) Start(_ context.Context, _ component.Host) error {
+	r.startTime = pcommon.NewTimestampFromTime(time.Now())
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
 	go r.run(ctx)
@@ -50,11 +56,14 @@ func (r *knxReceiver) Shutdown(ctx context.Context) error {
 	}
 }
 
-// run is the main loop: connect → readStartup → listen → reconnect on loss.
+// run is the main loop: connect → readStartup (async) → listen → reconnect on loss.
 func (r *knxReceiver) run(ctx context.Context) {
 	defer close(r.done)
 
-	const maxBackoff = 60 * time.Second
+	const (
+		maxBackoff      = 60 * time.Second
+		stableThreshold = 30 * time.Second
+	)
 	backoff := time.Second
 
 	for {
@@ -72,42 +81,60 @@ func (r *knxReceiver) run(ctx context.Context) {
 			if !r.sleep(ctx, backoff) {
 				return
 			}
-			if backoff < maxBackoff {
-				backoff *= 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-			}
+			backoff = nextBackoff(backoff, maxBackoff)
 			continue
 		}
 
 		r.logger.Info("KNX connected", zap.String("type", string(r.cfg.Connection.Type)))
-		backoff = time.Second // reset on successful connection
+		connectedAt := time.Now()
 
-		r.readStartup(ctx, client)
+		// readStartup runs concurrently with listen so the Inbound channel is drained
+		// immediately. Otherwise responses to the GroupValueRead requests could be
+		// dropped by the knx-go library while listen() has not started yet.
+		connCtx, connCancel := context.WithCancel(ctx)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.readStartup(connCtx, client)
+		}()
 
-		// listen blocks until the inbound channel is closed or ctx is cancelled
+		// listen blocks until the inbound channel is closed or ctx is cancelled.
 		r.listen(ctx, client)
-
+		connCancel()
+		// Wait for readStartup to finish before closing the client; otherwise a
+		// concurrent Send on a closed connection could panic.
+		wg.Wait()
 		client.Close()
 
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			r.logger.Warn("KNX connection lost, reconnecting...",
-				zap.Duration("backoff", backoff))
-			if !r.sleep(ctx, backoff) {
-				return
-			}
-			if backoff < maxBackoff {
-				backoff *= 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-			}
 		}
+
+		// Only reset backoff if the connection was stable for a while; otherwise a
+		// flapping connection would spin reconnects at the lowest backoff value.
+		if time.Since(connectedAt) > stableThreshold {
+			backoff = time.Second
+		}
+
+		r.logger.Warn("KNX connection lost, reconnecting...",
+			zap.Duration("backoff", backoff))
+		if !r.sleep(ctx, backoff) {
+			return
+		}
+		backoff = nextBackoff(backoff, maxBackoff)
 	}
+}
+
+// nextBackoff doubles the backoff, clamped to max.
+func nextBackoff(current, max time.Duration) time.Duration {
+	next := current * 2
+	if next > max {
+		return max
+	}
+	return next
 }
 
 // readStartup sends a GroupValueRead for each address with read_startup: true.
@@ -184,7 +211,7 @@ func (r *knxReceiver) handleEvent(ctx context.Context, event knx.GroupEvent) {
 		return
 	}
 
-	metrics := ConvertToMetrics(addr, ac, value, event.Source.String())
+	metrics := ConvertToMetrics(addr, ac, value, event.Source.String(), r.startTime, r.receiverID)
 	if err := r.nextConsumer.ConsumeMetrics(ctx, metrics); err != nil {
 		r.logger.Error("ConsumeMetrics failed", zap.Error(err))
 	}

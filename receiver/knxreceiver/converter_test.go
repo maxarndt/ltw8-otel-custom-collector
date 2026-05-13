@@ -2,7 +2,9 @@ package knxreceiver
 
 import (
 	"testing"
+	"time"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
@@ -14,17 +16,20 @@ func TestConvertToMetrics_Gauge(t *testing.T) {
 		Labels:     map[string]string{"room": "kueche", "floor": "eg"},
 	}
 
-	md := ConvertToMetrics("1/1/2", cfg, 230.5, "1.1.5")
+	md := ConvertToMetrics("1/1/2", cfg, 230.5, "1.1.5", pcommon.NewTimestampFromTime(time.Now()), "knx/eg")
 
 	if md.ResourceMetrics().Len() != 1 {
 		t.Fatalf("expected 1 ResourceMetrics, got %d", md.ResourceMetrics().Len())
 	}
 	rm := md.ResourceMetrics().At(0)
 
-	// Resource attribute
-	physAddr, ok := rm.Resource().Attributes().Get("knx.physical_address")
-	if !ok || physAddr.Str() != "1.1.5" {
-		t.Errorf("knx.physical_address: got %v, want 1.1.5", physAddr)
+	// Resource attribute: stable receiver identity, not per-event physical address.
+	instID, ok := rm.Resource().Attributes().Get("service.instance.id")
+	if !ok || instID.Str() != "knx/eg" {
+		t.Errorf("service.instance.id: got %v, want knx/eg", instID)
+	}
+	if _, present := rm.Resource().Attributes().Get("knx.physical_address"); present {
+		t.Error("knx.physical_address must not be a Resource attribute (it varies per event)")
 	}
 
 	sm := rm.ScopeMetrics().At(0)
@@ -50,6 +55,10 @@ func TestConvertToMetrics_Gauge(t *testing.T) {
 	if !ok || ga.Str() != "1/1/2" {
 		t.Errorf("knx.group_address: got %v", ga)
 	}
+	physAddr, ok := dp.Attributes().Get("knx.physical_address")
+	if !ok || physAddr.Str() != "1.1.5" {
+		t.Errorf("knx.physical_address (datapoint): got %v, want 1.1.5", physAddr)
+	}
 	room, ok := dp.Attributes().Get("room")
 	if !ok || room.Str() != "kueche" {
 		t.Errorf("room label: got %v", room)
@@ -64,7 +73,8 @@ func TestConvertToMetrics_Sum(t *testing.T) {
 		Labels:     map[string]string{},
 	}
 
-	md := ConvertToMetrics("1/1/1", cfg, 12345.0, "1.1.5")
+	startTs := pcommon.NewTimestampFromTime(time.Now())
+	md := ConvertToMetrics("1/1/1", cfg, 12345.0, "1.1.5", startTs, "knx")
 
 	m := md.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
 	if m.Type() != pmetric.MetricTypeSum {
@@ -83,6 +93,9 @@ func TestConvertToMetrics_Sum(t *testing.T) {
 	if dp.DoubleValue() != 12345.0 {
 		t.Errorf("value: got %v, want 12345.0", dp.DoubleValue())
 	}
+	if dp.StartTimestamp() != startTs {
+		t.Errorf("start_timestamp: got %v, want %v", dp.StartTimestamp(), startTs)
+	}
 }
 
 func TestConvertToMetrics_NoLabels(t *testing.T) {
@@ -93,11 +106,11 @@ func TestConvertToMetrics_NoLabels(t *testing.T) {
 		Labels:     nil,
 	}
 
-	md := ConvertToMetrics("2/1/1", cfg, 22.0, "0.0.0")
+	md := ConvertToMetrics("2/1/1", cfg, 22.0, "0.0.0", pcommon.NewTimestampFromTime(time.Now()), "knx")
 	dp := md.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Gauge().DataPoints().At(0)
 
-	// Only knx.group_address attribute (no user labels)
-	if dp.Attributes().Len() != 1 {
-		t.Errorf("expected 1 attribute, got %d", dp.Attributes().Len())
+	// knx.group_address + knx.physical_address attributes (no user labels).
+	if dp.Attributes().Len() != 2 {
+		t.Errorf("expected 2 attributes, got %d", dp.Attributes().Len())
 	}
 }
