@@ -16,7 +16,7 @@ func TestConvertToMetrics_Gauge(t *testing.T) {
 		Labels:     map[string]string{"room": "kueche", "floor": "eg"},
 	}
 
-	md := ConvertToMetrics("1/1/2", cfg, 230.5, "1.1.5", pcommon.NewTimestampFromTime(time.Now()), "knx/eg")
+	md := ConvertToMetrics("1/1/2", cfg, 230.5, "1.1.5", pcommon.NewTimestampFromTime(time.Now()), "knx/eg", "W")
 
 	if md.ResourceMetrics().Len() != 1 {
 		t.Fatalf("expected 1 ResourceMetrics, got %d", md.ResourceMetrics().Len())
@@ -40,6 +40,9 @@ func TestConvertToMetrics_Gauge(t *testing.T) {
 	m := sm.Metrics().At(0)
 	if m.Name() != "leistung_eg_kueche_w" {
 		t.Errorf("metric name: got %q", m.Name())
+	}
+	if m.Unit() != "W" {
+		t.Errorf("metric unit: got %q, want W", m.Unit())
 	}
 	if m.Type() != pmetric.MetricTypeGauge {
 		t.Errorf("expected Gauge, got %v", m.Type())
@@ -74,11 +77,14 @@ func TestConvertToMetrics_Sum(t *testing.T) {
 	}
 
 	startTs := pcommon.NewTimestampFromTime(time.Now())
-	md := ConvertToMetrics("1/1/1", cfg, 12345.0, "1.1.5", startTs, "knx")
+	md := ConvertToMetrics("1/1/1", cfg, 12345.0, "1.1.5", startTs, "knx", "Wh")
 
 	m := md.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
 	if m.Type() != pmetric.MetricTypeSum {
 		t.Fatalf("expected Sum, got %v", m.Type())
+	}
+	if m.Unit() != "Wh" {
+		t.Errorf("metric unit: got %q, want Wh", m.Unit())
 	}
 
 	s := m.Sum()
@@ -106,7 +112,7 @@ func TestConvertToMetrics_NoLabels(t *testing.T) {
 		Labels:     nil,
 	}
 
-	md := ConvertToMetrics("2/1/1", cfg, 22.0, "0.0.0", pcommon.NewTimestampFromTime(time.Now()), "knx")
+	md := ConvertToMetrics("2/1/1", cfg, 22.0, "0.0.0", pcommon.NewTimestampFromTime(time.Now()), "knx", "")
 	dp := md.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Gauge().DataPoints().At(0)
 
 	// knx.group_address + knx.physical_address attributes (no user labels).

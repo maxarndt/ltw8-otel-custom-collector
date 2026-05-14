@@ -43,6 +43,10 @@ type AddressConfig struct {
 	MetricType MetricType `mapstructure:"metric_type"`
 	// ReadStartup sends a GroupValueRead at startup to get the initial value.
 	ReadStartup bool `mapstructure:"read_startup"`
+	// Unit overrides the OTEL metric unit. If empty, the unit is derived from
+	// the DPT (e.g. "Wh" for 13.010, "mA" for 7.012). Set it when the device
+	// transmits scaled or non-default values for the DPT.
+	Unit string `mapstructure:"unit"`
 	// Labels are static key/value pairs attached to each data point.
 	Labels map[string]string `mapstructure:"labels"`
 }

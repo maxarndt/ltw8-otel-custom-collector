@@ -148,3 +148,22 @@ func TestDecodeDPT(t *testing.T) {
 		})
 	}
 }
+
+func TestDPTUnit(t *testing.T) {
+	tests := map[string]string{
+		"13.010":  "Wh",
+		"14.056":  "W",
+		"9.001":   "°C",
+		"9.004":   "lux",
+		"9.007":   "%",
+		"7.012":   "mA",
+		"5.001":   "%",
+		"5.010":   "pulses", // custom decoder
+		"99.999":  "",       // unknown -> empty
+	}
+	for dpt, want := range tests {
+		if got := DPTUnit(dpt); got != want {
+			t.Errorf("DPTUnit(%q) = %q, want %q", dpt, got, want)
+		}
+	}
+}

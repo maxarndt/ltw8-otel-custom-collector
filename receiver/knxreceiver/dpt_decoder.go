@@ -7,12 +7,17 @@ import (
 	"github.com/vapourismo/knx-go/knx/dpt"
 )
 
-// customDPTDecoders holds decoders for DPTs that are either missing from the
-// knx-go registry or whose native representation cannot be flattened to float64
-// by the reflection-based path. Add an entry here to support a new DPT.
-var customDPTDecoders = map[string]func(data []byte) (float64, error){
+// customDPT bundles a decoder and a unit string for DPTs that are not present
+// in the knx-go registry (or whose registry entry cannot be flattened to
+// float64). Add an entry here to support a new DPT.
+type customDPT struct {
+	decode func(data []byte) (float64, error)
+	unit   string
+}
+
+var customDPTDecoders = map[string]customDPT{
 	// DPT 5.010 (counter pulses, unsigned 8-bit) is not in the knx-go registry.
-	"5.010": decodeDPT5010,
+	"5.010": {decode: decodeDPT5010, unit: "pulses"},
 }
 
 // DecodeDPT decodes raw KNX telegram data using the named DPT (e.g. "9.001").
@@ -24,8 +29,8 @@ var customDPTDecoders = map[string]func(data []byte) (float64, error){
 // Unknown DPTs or non-scalar DPTs return an error — they are logged and skipped
 // by the caller.
 func DecodeDPT(dptName string, data []byte) (float64, error) {
-	if dec, ok := customDPTDecoders[dptName]; ok {
-		return dec(data)
+	if c, ok := customDPTDecoders[dptName]; ok {
+		return c.decode(data)
 	}
 
 	d, ok := dpt.Produce(dptName)
@@ -38,6 +43,24 @@ func DecodeDPT(dptName string, data []byte) (float64, error) {
 	}
 
 	return extractFloat64(dptName, d)
+}
+
+// DPTUnit returns the unit string for a given DPT (e.g. "Wh", "°C", "mA").
+// Resolution order matches DecodeDPT. Returns "" if the DPT is unknown or has
+// no canonical unit.
+func DPTUnit(dptName string) string {
+	if c, ok := customDPTDecoders[dptName]; ok {
+		return c.unit
+	}
+	d, ok := dpt.Produce(dptName)
+	if !ok {
+		return ""
+	}
+	type unitProvider interface{ Unit() string }
+	if u, ok := d.(unitProvider); ok {
+		return u.Unit()
+	}
+	return ""
 }
 
 // extractFloat64 converts a dpt.DatapointValue to float64 via reflection.

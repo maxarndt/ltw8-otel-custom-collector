@@ -16,6 +16,7 @@ const scopeName = "github.com/maxarndt/ltw8-otel-custom-collector/receiver/knxre
 // so the Prometheus exporter can detect counter resets correctly.
 // receiverID identifies this receiver instance and is stable for its lifetime; it is
 // attached as a Resource attribute (service.instance.id).
+// unit is the OTEL metric unit (e.g. "Wh", "mA"); empty means no unit is set.
 func ConvertToMetrics(
 	groupAddr string,
 	cfg *AddressConfig,
@@ -23,6 +24,7 @@ func ConvertToMetrics(
 	physicalAddr string,
 	startTs pcommon.Timestamp,
 	receiverID string,
+	unit string,
 ) pmetric.Metrics {
 	md := pmetric.NewMetrics()
 	rm := md.ResourceMetrics().AppendEmpty()
@@ -35,6 +37,9 @@ func ConvertToMetrics(
 
 	m := sm.Metrics().AppendEmpty()
 	m.SetName(cfg.Name)
+	if unit != "" {
+		m.SetUnit(unit)
+	}
 
 	now := pcommon.NewTimestampFromTime(time.Now())
 

@@ -224,7 +224,11 @@ func (r *knxReceiver) handleEvent(ctx context.Context, event knx.GroupEvent) {
 		return
 	}
 
-	metrics := ConvertToMetrics(addr, ac, value, event.Source.String(), r.startTime, r.receiverID)
+	unit := ac.Unit
+	if unit == "" {
+		unit = DPTUnit(ac.DPT)
+	}
+	metrics := ConvertToMetrics(addr, ac, value, event.Source.String(), r.startTime, r.receiverID, unit)
 	if err := r.nextConsumer.ConsumeMetrics(ctx, metrics); err != nil {
 		r.tel.consumeErrors.Add(ctx, 1)
 		r.logger.Error("ConsumeMetrics failed", zap.Error(err))
