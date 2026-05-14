@@ -76,28 +76,41 @@ func TestDecodeDPT(t *testing.T) {
 			wantVal: 50.0,
 		},
 		{
-			name:    "5.010 uint8 value 127",
+			// knx-go wire format for DPT 5.x: [0, value] (2 bytes, APCI padding + value).
+			name:    "5.010 wire-format value 127",
 			dptName: "5.010",
-			data:    []byte{127},
+			data:    []byte{0x00, 127},
 			wantVal: 127.0,
 		},
 		{
-			name:    "5.010 uint8 value 0",
+			name:    "5.010 wire-format value 0",
 			dptName: "5.010",
-			data:    []byte{0},
+			data:    []byte{0x00, 0},
 			wantVal: 0.0,
 		},
 		{
-			name:    "5.010 uint8 value 255",
+			name:    "5.010 wire-format value 255",
 			dptName: "5.010",
-			data:    []byte{255},
+			data:    []byte{0x00, 255},
 			wantVal: 255.0,
 		},
 		{
-			name:    "5.010 multi-byte uses last byte",
+			name:    "5.010 wrong length (1 byte) returns error",
 			dptName: "5.010",
-			data:    []byte{0x00, 0xAB},
-			wantVal: 0xAB,
+			data:    []byte{127},
+			wantErr: true,
+		},
+		{
+			name:    "5.010 wrong length (3 bytes) returns error",
+			dptName: "5.010",
+			data:    []byte{0, 1, 2},
+			wantErr: true,
+		},
+		{
+			name:    "5.010 empty data returns error",
+			dptName: "5.010",
+			data:    []byte{},
+			wantErr: true,
 		},
 		{
 			name:    "unknown DPT returns error",
@@ -106,9 +119,11 @@ func TestDecodeDPT(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "5.010 empty data returns error",
-			dptName: "5.010",
-			data:    []byte{},
+			// DPT 232.600 (RGB) is registered in knx-go as a struct — should fall
+			// through extractFloat64's default case with a clear error message.
+			name:    "232.600 struct DPT returns clear error",
+			dptName: "232.600",
+			data:    []byte{0x00, 0xFF, 0x00, 0xFF},
 			wantErr: true,
 		},
 	}

@@ -8,9 +8,11 @@ import (
 	"github.com/vapourismo/knx-go/knx"
 	"github.com/vapourismo/knx-go/knx/cemi"
 	"github.com/vapourismo/knx-go/knx/dpt"
+	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func testConfig() *Config {
@@ -50,7 +52,10 @@ func testConfig() *Config {
 func makeReceiver(t *testing.T, mock *mockKNXClient, sink *consumertest.MetricsSink) *knxReceiver {
 	t.Helper()
 	set := receivertest.NewNopSettings(receivertest.NopType)
-	r := newKNXReceiver(set, testConfig(), sink)
+	r, err := newKNXReceiver(set, testConfig(), sink)
+	if err != nil {
+		t.Fatalf("newKNXReceiver: %v", err)
+	}
 
 	// Replace the global NewKNXClient with a factory that returns our mock.
 	orig := NewKNXClient
@@ -229,7 +234,10 @@ func TestReceiver_ReadStartup_DoesNotBlockInbound(t *testing.T) {
 	}
 
 	set := receivertest.NewNopSettings(receivertest.NopType)
-	r := newKNXReceiver(set, cfg, sink)
+	r, err := newKNXReceiver(set, cfg, sink)
+	if err != nil {
+		t.Fatalf("newKNXReceiver: %v", err)
+	}
 	orig := NewKNXClient
 	t.Cleanup(func() { NewKNXClient = orig })
 	NewKNXClient = func(_ ConnectionConfig) (KNXClient, error) { return mock, nil }
@@ -289,5 +297,90 @@ func TestReceiver_ReadStartup(t *testing.T) {
 	}
 	if readCount != 1 {
 		t.Errorf("expected 1 GroupRead sent, got %d", readCount)
+	}
+}
+
+// TestReceiver_Telemetry_Counts verifies the self-telemetry counters and the
+// connection_up up/down counter against a real SDK MeterProvider.
+func TestReceiver_Telemetry_Counts(t *testing.T) {
+	tel := componenttest.NewTelemetry()
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+
+	mock := newMockKNXClient()
+	sink := &consumertest.MetricsSink{}
+
+	set := receivertest.NewNopSettings(receivertest.NopType)
+	set.TelemetrySettings = tel.NewTelemetrySettings()
+
+	r, err := newKNXReceiver(set, testConfig(), sink)
+	if err != nil {
+		t.Fatalf("newKNXReceiver: %v", err)
+	}
+	orig := NewKNXClient
+	t.Cleanup(func() { NewKNXClient = orig })
+	NewKNXClient = func(_ ConnectionConfig) (KNXClient, error) { return mock, nil }
+
+	if err := r.Start(context.Background(), nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Successful telegram on 1/1/2 (Gauge, DPT 14.056).
+	ga, _ := cemi.NewGroupAddrString("1/1/2")
+	src, _ := cemi.NewIndividualAddrString("1.1.5")
+	mock.inbound <- knx.GroupEvent{
+		Command:     knx.GroupWrite,
+		Source:      src,
+		Destination: ga,
+		Data:        dpt.DPT_14056(100.0).Pack(),
+	}
+
+	// Decode error: send a 14.056 telegram with too-short data for address 1/1/1
+	// (configured with DPT 13.010 expecting 6 bytes — passing 1 byte triggers
+	// an unpack error).
+	gaErr, _ := cemi.NewGroupAddrString("1/1/1")
+	mock.inbound <- knx.GroupEvent{
+		Command:     knx.GroupWrite,
+		Source:      src,
+		Destination: gaErr,
+		Data:        []byte{0x00},
+	}
+
+	time.Sleep(80 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = r.Shutdown(ctx)
+
+	if got := sumIntCounter(t, tel, "knxreceiver.telegrams_received"); got != 1 {
+		t.Errorf("telegrams_received: got %d, want 1", got)
+	}
+	if got := sumIntCounter(t, tel, "knxreceiver.decode_errors"); got != 1 {
+		t.Errorf("decode_errors: got %d, want 1", got)
+	}
+	// connection_up has been Add(+1) on connect, Add(-1) on shutdown → net 0.
+	if got := sumIntCounter(t, tel, "knxreceiver.connection_up"); got != 0 {
+		t.Errorf("connection_up: got %d, want 0", got)
+	}
+	// reconnects has not been incremented in a clean-shutdown path — the metric
+	// may legitimately be absent from the reader output.
+}
+
+// sumIntCounter aggregates all data points of an int64 Sum metric.
+func sumIntCounter(t *testing.T, tel *componenttest.Telemetry, name string) int64 {
+	t.Helper()
+	m, err := tel.GetMetric(name)
+	if err != nil {
+		t.Fatalf("GetMetric(%q): %v", name, err)
+	}
+	switch d := m.Data.(type) {
+	case metricdata.Sum[int64]:
+		var sum int64
+		for _, dp := range d.DataPoints {
+			sum += dp.Value
+		}
+		return sum
+	default:
+		t.Fatalf("metric %q has unexpected data type %T", name, m.Data)
+		return 0
 	}
 }

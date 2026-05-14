@@ -46,5 +46,5 @@ func createMetricsReceiver(
 	if !ok {
 		return nil, fmt.Errorf("invalid config type: %T", cfg)
 	}
-	return newKNXReceiver(set, c, next), nil
+	return newKNXReceiver(set, c, next)
 }

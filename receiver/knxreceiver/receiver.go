@@ -11,6 +11,8 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -22,16 +24,22 @@ type knxReceiver struct {
 	done         chan struct{}
 	startTime    pcommon.Timestamp
 	receiverID   string
+	tel          *telemetry
 }
 
-func newKNXReceiver(set receiver.Settings, cfg *Config, next consumer.Metrics) *knxReceiver {
+func newKNXReceiver(set receiver.Settings, cfg *Config, next consumer.Metrics) (*knxReceiver, error) {
+	tel, err := newTelemetry(set.TelemetrySettings.MeterProvider)
+	if err != nil {
+		return nil, err
+	}
 	return &knxReceiver{
 		cfg:          cfg,
 		logger:       set.Logger,
 		nextConsumer: next,
 		done:         make(chan struct{}),
 		receiverID:   set.ID.String(),
-	}
+		tel:          tel,
+	}, nil
 }
 
 // Start launches the KNX receiver goroutine and returns immediately.
@@ -75,6 +83,7 @@ func (r *knxReceiver) run(ctx context.Context) {
 
 		client, err := NewKNXClient(r.cfg.Connection)
 		if err != nil {
+			r.tel.reconnects.Add(ctx, 1)
 			r.logger.Error("KNX connect failed, retrying",
 				zap.Error(err),
 				zap.Duration("backoff", backoff))
@@ -86,6 +95,7 @@ func (r *knxReceiver) run(ctx context.Context) {
 		}
 
 		r.logger.Info("KNX connected", zap.String("type", string(r.cfg.Connection.Type)))
+		r.tel.connectionUp.Add(ctx, 1)
 		connectedAt := time.Now()
 
 		// readStartup runs concurrently with listen so the Inbound channel is drained
@@ -106,12 +116,14 @@ func (r *knxReceiver) run(ctx context.Context) {
 		// concurrent Send on a closed connection could panic.
 		wg.Wait()
 		client.Close()
+		r.tel.connectionUp.Add(ctx, -1)
 
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
+		r.tel.reconnects.Add(ctx, 1)
 
 		// Only reset backoff if the connection was stable for a while; otherwise a
 		// flapping connection would spin reconnects at the lowest backoff value.
@@ -204,6 +216,7 @@ func (r *knxReceiver) handleEvent(ctx context.Context, event knx.GroupEvent) {
 
 	value, err := DecodeDPT(ac.DPT, event.Data)
 	if err != nil {
+		r.tel.decodeErrors.Add(ctx, 1, metric.WithAttributes(attribute.String("dpt", ac.DPT)))
 		r.logger.Error("DPT decode failed",
 			zap.String("address", addr),
 			zap.String("dpt", ac.DPT),
@@ -213,7 +226,22 @@ func (r *knxReceiver) handleEvent(ctx context.Context, event knx.GroupEvent) {
 
 	metrics := ConvertToMetrics(addr, ac, value, event.Source.String(), r.startTime, r.receiverID)
 	if err := r.nextConsumer.ConsumeMetrics(ctx, metrics); err != nil {
+		r.tel.consumeErrors.Add(ctx, 1)
 		r.logger.Error("ConsumeMetrics failed", zap.Error(err))
+		return
+	}
+	r.tel.telegrams.Add(ctx, 1, metric.WithAttributes(attribute.String("command", commandName(event.Command))))
+}
+
+// commandName maps the KNX command to a low-cardinality label.
+func commandName(c knx.GroupCommand) string {
+	switch c {
+	case knx.GroupWrite:
+		return "write"
+	case knx.GroupResponse:
+		return "response"
+	default:
+		return "other"
 	}
 }
 
