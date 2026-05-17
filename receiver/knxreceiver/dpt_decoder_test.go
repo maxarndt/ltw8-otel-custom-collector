@@ -113,6 +113,43 @@ func TestDecodeDPT(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			// knx-go wire format for DPT 12.x: [0, b1, b2, b3, b4] (5 bytes, APCI padding + big-endian U32).
+			name:    "12.1200 volume 123456 l",
+			dptName: "12.1200",
+			data:    []byte{0x00, 0x00, 0x01, 0xE2, 0x40}, // 123456 = 0x0001E240
+			wantVal: 123456.0,
+		},
+		{
+			name:    "12.1200 volume 0 l",
+			dptName: "12.1200",
+			data:    []byte{0x00, 0x00, 0x00, 0x00, 0x00},
+			wantVal: 0.0,
+		},
+		{
+			name:    "12.1200 volume max (4294967295)",
+			dptName: "12.1200",
+			data:    []byte{0x00, 0xFF, 0xFF, 0xFF, 0xFF},
+			wantVal: 4294967295.0,
+		},
+		{
+			name:    "12.001 uses same decoder as 12.1200",
+			dptName: "12.001",
+			data:    []byte{0x00, 0x00, 0x00, 0x00, 0x2A}, // 42
+			wantVal: 42.0,
+		},
+		{
+			name:    "12.1200 wrong length (4 bytes) returns error",
+			dptName: "12.1200",
+			data:    []byte{0x00, 0x00, 0x00, 0x00},
+			wantErr: true,
+		},
+		{
+			name:    "12.1200 wrong length (6 bytes) returns error",
+			dptName: "12.1200",
+			data:    []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			wantErr: true,
+		},
+		{
 			name:    "unknown DPT returns error",
 			dptName: "99.999",
 			data:    []byte{0x00},
@@ -159,6 +196,8 @@ func TestDPTUnit(t *testing.T) {
 		"7.012":   "mA",
 		"5.001":   "%",
 		"5.010":   "pulses", // custom decoder
+		"12.001":  "pulses", // custom decoder
+		"12.1200": "l",      // custom decoder
 		"99.999":  "",       // unknown -> empty
 	}
 	for dpt, want := range tests {

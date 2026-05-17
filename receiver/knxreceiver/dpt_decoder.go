@@ -1,6 +1,7 @@
 package knxreceiver
 
 import (
+	"encoding/binary"
 	"fmt"
 	"reflect"
 
@@ -18,6 +19,11 @@ type customDPT struct {
 var customDPTDecoders = map[string]customDPT{
 	// DPT 5.010 (counter pulses, unsigned 8-bit) is not in the knx-go registry.
 	"5.010": {decode: decodeDPT5010, unit: "pulses"},
+	// DPT 12.x (4-byte unsigned integer) — only 12.001 is in the knx-go registry.
+	// Subtypes with different semantics (e.g. 12.1200 = volume in litres per ETS)
+	// share the same wire format but carry different units.
+	"12.001":  {decode: decodeDPT12, unit: "pulses"},
+	"12.1200": {decode: decodeDPT12, unit: "l"},
 }
 
 // DecodeDPT decodes raw KNX telegram data using the named DPT (e.g. "9.001").
@@ -96,4 +102,14 @@ func decodeDPT5010(data []byte) (float64, error) {
 		return 0, fmt.Errorf("DPT 5.010: expected 2 bytes, got %d", len(data))
 	}
 	return float64(data[1]), nil
+}
+
+// decodeDPT12 handles DPT 12.x (unsigned 32-bit integer).
+// Wire format matches knx-go's packU32: 5 bytes, first byte APCI padding,
+// bytes 1–4 big-endian U32.
+func decodeDPT12(data []byte) (float64, error) {
+	if len(data) != 5 {
+		return 0, fmt.Errorf("DPT 12: expected 5 bytes, got %d", len(data))
+	}
+	return float64(binary.BigEndian.Uint32(data[1:])), nil
 }
