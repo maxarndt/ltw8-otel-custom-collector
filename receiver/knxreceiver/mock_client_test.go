@@ -25,10 +25,13 @@ func (m *mockKNXClient) Send(e knx.GroupEvent) error {
 }
 
 func (m *mockKNXClient) Close() {
-	// Drain and close so the inbound range terminates.
-	select {
-	case <-m.inbound:
-	default:
+	// Drain all events from the buffer before closing.
+	for {
+		select {
+		case <-m.inbound:
+		default:
+			close(m.inbound)
+			return
+		}
 	}
-	close(m.inbound)
 }
