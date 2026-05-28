@@ -1,6 +1,12 @@
+# Lokale Test-Konfiguration fuer den knxreceiver.
+# Diese Datei ist via .gitignore (*.local) vom Repository ausgeschlossen.
+#
+# Vor dem ersten Start: <MDT_ROUTER_IP> durch die IP-Adresse deines MDT IP
+# Routers ersetzen (Port 3671 ist KNX/IP Standard).
+
 extensions:
   health_check:
-    endpoint: 0.0.0.0:13133
+    endpoint: 127.0.0.1:13133
 
 receivers:
   knx:
@@ -58,58 +64,32 @@ receivers:
         labels:
           room: "technikflur"
           floor: "ug"
-
-  syr:
-    endpoint: "http://10.8.10.170:5333"
-    collection_interval: 2m
-    timeout: 10s
-    metrics:
-      FLO:
-        enabled: false
-      IWH:
-        enabled: false
-      OWH:
-        enabled: false
-      VOL:
-        enabled: true
-      RE1:
-        enabled: true
-      SS1:
-        enabled: true
-      SV1:
-        enabled: true
-      ALA:
-        enabled: true
-      RG1:
-        enabled: true
-
-  fronius:
-    endpoint: "http://10.8.10.19"
-    collection_interval: 60s
-    timeout: 10s
-    metrics:
-      power_flow: true
-      inverter_realtime: true
-      meter_realtime: true
-      storage_realtime: true
-      inverter_info: true
-      ohmpilot_realtime: false
-
+      # "30/5/7":
+      #   name: "to be defined"
+      #   dpt: "something"
+      #   export: true
+      #   metric_type: "gauge"
+      #   read_startup: false
+      #   labels:
+      #     room: "dachboden"
+      #     floor: "dg"
 exporters:
-  prometheusremotewrite:
-    endpoint: "http://victoriametrics.observability.svc.cluster.local:8428/api/v1/write"
-    resource_to_telemetry_conversion:
-      enabled: true
-    tls:
-      insecure: true
   debug:
     verbosity: detailed
 
 service:
+  # Telemetry des Collectors selbst: Self-Metrics auf 127.0.0.1:8888/metrics.
+  # Dort siehst du auch knxreceiver_telegrams_received_total etc.
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 8888
   extensions: [health_check]
   pipelines:
     metrics:
-      # receivers: [knx, syr, fronius]
-      receivers: [knx, fronius]
-      exporters: [prometheusremotewrite]
-      # exporters: [debug, prometheusremotewrite]
+      receivers: [knx]
+      exporters: [debug]
