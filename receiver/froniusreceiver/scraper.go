@@ -102,8 +102,12 @@ func (s *FroniusScraper) Scrape(ctx context.Context) (*ScrapedMetrics, error) {
 	// 6. Ohmpilot Realtime Data
 	if s.metrics.OhmpilotRealtime {
 		if ohm, err := s.getOhmpilotRealtimeData(ctx); err != nil {
-			s.logger.Warn("failed to fetch OhmpilotRealtimeData", zap.Error(err))
-			errCount++
+			if err == ErrEndpointNotFound {
+				s.logger.Debug("OhmpilotRealtimeData endpoint not available (404) — device not connected or firmware too old")
+			} else {
+				s.logger.Warn("failed to fetch OhmpilotRealtimeData", zap.Error(err))
+				errCount++
+			}
 		} else {
 			scraped.Ohmpilot = ohm
 		}
@@ -195,7 +199,7 @@ func (s *FroniusScraper) getStorageRealtimeData(ctx context.Context) (StorageRea
 
 // getOhmpilotRealtimeData fetcht Ohmpilot Daten.
 func (s *FroniusScraper) getOhmpilotRealtimeData(ctx context.Context) (OhmpilotRealtimeData, error) {
-	path := "/solar_api/v1/GetOhmpilotRealtimeData.cgi"
+	path := "/solar_api/v1/GetOhmPilotRealtimeData.cgi"
 	params := url.Values{
 		"Scope": {"System"},
 	}
@@ -216,6 +220,10 @@ func (s *FroniusScraper) getInverterInfo(ctx context.Context) (InverterInfoData,
 	return data, nil
 }
 
+// ErrEndpointNotFound wird zurückgegeben wenn der Fronius-Endpoint einen 404 liefert
+// (z.B. Gerät nicht verbunden oder Firmware unterstützt diesen Endpoint nicht).
+var ErrEndpointNotFound = fmt.Errorf("endpoint not found (404)")
+
 // fetchJSON führt einen generischen HTTP GET Request durch und parst die JSON Response.
 func (s *FroniusScraper) fetchJSON(ctx context.Context, path string, params url.Values, out interface{}) error {
 	fullURL := s.endpoint + path
@@ -233,6 +241,10 @@ func (s *FroniusScraper) fetchJSON(ctx context.Context, path string, params url.
 		return fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrEndpointNotFound
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

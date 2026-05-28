@@ -93,7 +93,7 @@ receivers:
       meter_realtime: true
       storage_realtime: true
       inverter_info: true
-      ohmpilot_realtime: false
+      ohmpilot_realtime: true
 
 exporters:
   prometheusremotewrite:
