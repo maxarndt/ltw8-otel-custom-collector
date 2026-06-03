@@ -58,6 +58,60 @@ receivers:
         labels:
           room: "technikflur"
           floor: "ug"
+      "0/2/0":
+        name: "wetter_helligkeit"
+        dpt: "9.004"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "gartenhaus"
+          floor: "outdoor"
+      "0/2/1":
+        name: "wetter_daemmerung"
+        dpt: "9.004"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "gartenhaus"
+          floor: "outdoor"
+      "0/2/2":
+        name: "wetter_temperatur"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "gartenhaus"
+          floor: "outdoor"
+      "0/2/3":
+        name: "wetter_tag_nacht"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "gartenhaus"
+          floor: "outdoor"
+      "30/1/29":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "bad"
+          floor: "eg"
+      "13/7/0":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "bad"
+          floor: "eg"
 
   syr:
     endpoint: "http://10.8.10.170:5333"
