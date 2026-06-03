@@ -212,6 +212,14 @@ func (c *Converter) convertInverter(
 				dp.Value, map[string]string{"mppt": mppt}, now)
 		}
 	}
+	udcByMppt := map[string]*DataPoint{"1": inv.UDC, "2": inv.UDC_2, "3": inv.UDC_3}
+	for mppt, idc := range map[string]*DataPoint{"1": inv.IDC, "2": inv.IDC_2, "3": inv.IDC_3} {
+		udc := udcByMppt[mppt]
+		if idc != nil && udc != nil {
+			c.addGauge(ms, "fronius_inverter_dc_power", "Inverter DC power", "W",
+				udc.Value*idc.Value, map[string]string{"mppt": mppt}, now)
+		}
+	}
 
 	// Energien (alleinige Quelle — nicht via PowerFlow doppelt)
 	if inv.TOTAL_ENERGY != nil {
