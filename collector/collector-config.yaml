@@ -49,6 +49,16 @@ receivers:
           room: "kueche"
           floor: "ug"
           outlet: "kuehlschrank"
+      "30/3/12":
+        name: "elektrische_arbeit_Wh"
+        dpt: "13.010"
+        export: true
+        metric_type: "sum"
+        read_startup: true
+        labels:
+          room: "technikraum"
+          floor: "ug"
+          outlet: "netzwerkschrank"
       "30/5/5":
         name: "gas_zaehlerstand_l"
         dpt: "12.1200"
