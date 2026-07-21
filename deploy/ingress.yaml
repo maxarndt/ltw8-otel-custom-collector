@@ -1,0 +1,14 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: custom-collector
+  namespace: observability
+spec:
+  entryPoints:
+    - otlp-http
+  routes:
+    - match: Host(`otel.ltw8.net`)
+      kind: Rule
+      services:
+        - name: custom-collector
+          port: 4318

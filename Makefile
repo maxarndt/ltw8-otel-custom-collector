@@ -17,4 +17,5 @@ deploy: configmap
 	kubectl apply -f deploy/namespace.yaml
 	kubectl apply -f deploy/deployment.yaml
 	kubectl apply -f deploy/service.yaml
+	kubectl apply -f deploy/ingress.yaml
 	kubectl rollout status deployment/custom-collector -n $(NAMESPACE)

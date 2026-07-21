@@ -14,3 +14,7 @@ spec:
       port: 13133
       targetPort: health
       protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP

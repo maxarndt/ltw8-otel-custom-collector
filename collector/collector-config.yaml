@@ -3,6 +3,11 @@ extensions:
     endpoint: 0.0.0.0:13133
 
 receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
   knx:
     connection:
       type: "tunnel"
@@ -281,7 +286,7 @@ service:
   extensions: [health_check]
   pipelines:
     metrics:
-      # receivers: [knx, syr, fronius]
-      receivers: [knx, fronius]
+      # receivers: [otlp, knx, syr, fronius]
+      receivers: [otlp, knx, fronius]
       exporters: [prometheusremotewrite]
       # exporters: [debug, prometheusremotewrite]

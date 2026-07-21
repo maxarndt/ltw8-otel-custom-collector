@@ -6,6 +6,7 @@ dist:
   module: github.com/maxarndt/ltw8-otel-custom-collector/collector
 
 receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.149.0
   - gomod: github.com/maxarndt/ltw8-otel-custom-collector/receiver/knxreceiver v0.0.1
     path: ../receiver/knxreceiver
   - gomod: github.com/maxarndt/ltw8-otel-custom-collector/receiver/syrreceiver v0.0.1
