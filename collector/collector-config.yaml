@@ -104,8 +104,8 @@ receivers:
         labels:
           room: "gartenhaus"
           floor: "outdoor"
-      "30/1/29":
-        name: "temperatur_soll"
+      "13/7/0":
+        name: "temperatur_ist"
         dpt: "9.001"
         export: true
         metric_type: "gauge"
@@ -113,8 +113,116 @@ receivers:
         labels:
           room: "bad"
           floor: "eg"
-      "13/7/0":
+      "30/1/2":
         name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "bad"
+          floor: "ug"
+      "30/1/5":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "wohnzimmer"
+          floor: "ug"
+      "30/1/6":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "esszimmer"
+          floor: "ug"
+      "30/1/14":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "wohnflur"
+          floor: "ug"
+      "30/1/16":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "vorratsraum"
+          floor: "ug"
+      "30/1/18":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "technikflur"
+          floor: "ug"
+      "30/1/9":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "diele"
+          floor: "eg"
+      "30/1/10":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "kind1"
+          floor: "eg"
+      "30/1/13":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "kind2"
+          floor: "eg"
+      "30/1/20":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "schlafzimmer"
+          floor: "eg"
+      "30/1/22":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "windfang"
+          floor: "eg"
+      "30/1/24":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "buero"
+          floor: "eg"
+      "30/1/29":
+        name: "temperatur_soll"
         dpt: "9.001"
         export: true
         metric_type: "gauge"
