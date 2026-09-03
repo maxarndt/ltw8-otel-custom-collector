@@ -14,6 +14,7 @@ receivers:
       endpoint: "10.8.10.46:3671"
     read_startup_interval: 200ms
     address_configs:
+      # consumption
       "30/3/6":
         name: "elektrische_arbeit_Wh"
         dpt: "13.010"
@@ -73,6 +74,7 @@ receivers:
         labels:
           room: "technikflur"
           floor: "ug"
+      # weather
       "0/2/0":
         name: "wetter_helligkeit"
         dpt: "9.004"
@@ -109,6 +111,7 @@ receivers:
         labels:
           room: "gartenhaus"
           floor: "outdoor"
+      # temperature
       "13/7/0":
         name: "temperatur_ist"
         dpt: "9.001"
@@ -235,6 +238,78 @@ receivers:
         labels:
           room: "bad"
           floor: "eg"
+      # ventillation
+      "30/7/0":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "dach"
+          floor: "outdoor"
+          kind: "aussenluft"
+          device: "HomeVent-ER300"
+      "30/7/1":
+        name: "temperatur_ist"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          kind: "abluft"
+          device: "HomeVent-ER300"
+      "30/7/2":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "HomeVent-ER300"
+      "30/7/15":
+        name: "modulation_soll"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "HomeVent-ER300"
+      "30/7/3":
+        name: "feuchte_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          kind: "abluft"
+          device: "HomeVent-ER300"
+      "30/7/17":
+        name: "feuchte_soll"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          kind: "abluft"
+          device: "HomeVent-ER300"
+      "30/7/6":
+        name: "voc_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          kind: "abluft"
+          device: "HomeVent-ER300"
+      "30/7/18":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "HomeVent-ER300"
 
   syr:
     endpoint: "http://10.8.10.170:5333"
