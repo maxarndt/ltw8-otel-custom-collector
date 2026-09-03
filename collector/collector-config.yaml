@@ -65,6 +65,16 @@ receivers:
           room: "technikraum"
           floor: "ug"
           outlet: "netzwerkschrank"
+      "30/3/15":
+        name: "elektrische_arbeit_Wh"
+        dpt: "13.010"
+        export: true
+        metric_type: "sum"
+        read_startup: true
+        labels:
+          room: "bad"
+          floor: "eg"
+          outlet: "handtuchheizkoerper"
       "30/5/5":
         name: "gas_zaehlerstand_l"
         dpt: "12.1200"
