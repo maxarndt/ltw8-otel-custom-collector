@@ -310,6 +310,16 @@ receivers:
         read_startup: true
         labels:
           device: "HomeVent-ER300"
+      "30/2/14":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "Umwelzpumpe-Warmwasser"
+          room: "heizraum"
+          floor: "ug"
 
   syr:
     endpoint: "http://10.8.10.170:5333"
