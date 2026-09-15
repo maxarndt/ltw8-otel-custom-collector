@@ -221,15 +221,6 @@ receivers:
         labels:
           room: "schlafzimmer"
           floor: "eg"
-      "30/1/22":
-        name: "temperatur_ist"
-        dpt: "9.001"
-        export: true
-        metric_type: "gauge"
-        read_startup: true
-        labels:
-          room: "windfang"
-          floor: "eg"
       "16/2/0":
         name: "temperatur_ist"
         dpt: "9.001"
@@ -239,7 +230,383 @@ receivers:
         labels:
           room: "buero"
           floor: "eg"
-      # ventillation
+      "13/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "bad"
+          floor: "eg"
+      "3/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "bad"
+          floor: "ug"
+      "9/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "wohnzimmer"
+          floor: "ug"
+      "10/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "esszimmer"
+          floor: "ug"
+      "5/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "wohnflur"
+          floor: "ug"
+      "4/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "vorratsraum"
+          floor: "ug"
+      "6/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "technikflur"
+          floor: "ug"
+      "12/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "diele"
+          floor: "eg"
+      "14/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "kind1"
+          floor: "eg"
+      "17/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "kind2"
+          floor: "eg"
+      "15/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "schlafzimmer"
+          floor: "eg"
+      "11/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "windfang"
+          floor: "eg"
+      "16/2/9":
+        name: "temperatur_soll"
+        dpt: "9.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          room: "buero"
+          floor: "eg"
+      "13/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "bad"
+          floor: "eg"
+      "3/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "bad"
+          floor: "ug"
+      "9/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "wohnzimmer"
+          floor: "ug"
+      "10/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "esszimmer"
+          floor: "ug"
+      "5/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "wohnflur"
+          floor: "ug"
+      "4/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "vorratsraum"
+          floor: "ug"
+      "6/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "technikflur"
+          floor: "ug"
+      "12/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "diele"
+          floor: "eg"
+      "14/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "kind1"
+          floor: "eg"
+      "17/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "kind2"
+          floor: "eg"
+      "15/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "schlafzimmer"
+          floor: "eg"
+      "11/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "windfang"
+          floor: "eg"
+      "16/2/10":
+        name: "modulation_ist"
+        dpt: "5.001"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "buero"
+          floor: "eg"
+      "13/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "bad"
+          floor: "eg"
+      "3/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "bad"
+          floor: "ug"
+      "9/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "wohnzimmer"
+          floor: "ug"
+      "10/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "esszimmer"
+          floor: "ug"
+      "5/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "wohnflur"
+          floor: "ug"
+      "4/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "vorratsraum"
+          floor: "ug"
+      "6/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "technikflur"
+          floor: "ug"
+      "12/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "diele"
+          floor: "eg"
+      "14/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "kind1"
+          floor: "eg"
+      "17/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "kind2"
+          floor: "eg"
+      "15/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "schlafzimmer"
+          floor: "eg"
+      "11/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "windfang"
+          floor: "eg"
+      "16/2/11":
+        name: "device_on"
+        dpt: "1.002"
+        export: true
+        metric_type: "gauge"
+        read_startup: true
+        labels:
+          device: "thermal-actuator"
+          room: "buero"
+          floor: "eg"
       "30/7/0":
         name: "temperatur_ist"
         dpt: "9.001"
