@@ -75,6 +75,66 @@ receivers:
           room: "bad"
           floor: "eg"
           outlet: "handtuchheizkoerper"
+      "30/3/19":
+        name: "elektrische_arbeit_Wh"
+        dpt: "13.010"
+        export: true
+        metric_type: "sum"
+        read_startup: true
+        labels:
+          room: "kueche"
+          floor: "ug"
+          outlet: "spuelmaschine"
+      "30/3/20":
+        name: "elektrische_arbeit_Wh"
+        dpt: "13.010"
+        export: true
+        metric_type: "sum"
+        read_startup: true
+        labels:
+          room: "kueche"
+          floor: "ug"
+          outlet: "backofen"
+      "30/3/21":
+        name: "elektrische_arbeit_Wh"
+        dpt: "13.010"
+        export: true
+        metric_type: "sum"
+        read_startup: true
+        labels:
+          room: "kueche"
+          floor: "ug"
+          outlet: "mikrowelle"
+      "30/3/26":
+        name: "elektrische_arbeit_Wh"
+        dpt: "13.010"
+        export: true
+        metric_type: "sum"
+        read_startup: true
+        labels:
+          room: "kueche"
+          floor: "ug"
+          outlet: "kochfeld"
+      "30/3/22":
+        name: "elektrische_arbeit_Wh"
+        dpt: "13.010"
+        export: true
+        metric_type: "sum"
+        read_startup: true
+        labels:
+          room: "technikraum"
+          floor: "ug"
+          outlet: "waschmaschine"
+      "30/3/23":
+        name: "elektrische_arbeit_Wh"
+        dpt: "13.010"
+        export: true
+        metric_type: "sum"
+        read_startup: true
+        labels:
+          room: "technikraum"
+          floor: "ug"
+          outlet: "waeschetrockner"
       "30/5/5":
         name: "gas_zaehlerstand_l"
         dpt: "12.1200"
