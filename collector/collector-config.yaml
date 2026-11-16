@@ -750,7 +750,7 @@ receivers:
           floor: "ug"
 
   syr:
-    endpoint: "http://10.8.10.170:5333"
+    endpoint: "http://syr-neosoft.ltw8.net:5333"
     collection_interval: 2m
     timeout: 10s
     metrics:
